@@ -121,6 +121,20 @@
     accent-color: var(--accent);
     cursor: pointer;
   }
+  #sort-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text3);
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  #sort-btn:hover { border-color: var(--accent); color: var(--text); }
+  #sort-btn.active { border-color: var(--accent); color: var(--accent); }
 
   /* ── MAIN LAYOUT ── */
   #main {
@@ -406,6 +420,7 @@
   <label id="filter-unknown-label">
     <input type="checkbox" id="filter-unknown"> unknown除外
   </label>
+  <button id="sort-btn" disabled>日付 ↓</button>
   <span id="mail-count">—</span>
 </div>
 
@@ -467,6 +482,7 @@ let filteredEmails = [];
 let currentEmail = null;
 let viewMode = 'html'; // 'plain' | 'html'
 let currentFilePath = '';
+let sortOrder = 'desc'; // 'desc' | 'asc'
 
 const $ = id => document.getElementById(id);
 
@@ -494,9 +510,11 @@ async function openFile() {
     return;
   }
 
-  allEmails = emails.sort((a, b) => b.dateObj - a.dateObj);
+  allEmails = emails;
+  applySort();
   filteredEmails = applyUnknownFilter(allEmails);
   $('search-input').disabled = false;
+  $('sort-btn').disabled = false;
   updateList();
   showNoSelection();
 }
@@ -504,8 +522,17 @@ async function openFile() {
 $('open-btn').addEventListener('click', openFile);
 $('open-btn2').addEventListener('click', openFile);
 
-// ── Search & filter ──
+// ── Sort / filter / search ──
 let searchTimer = null;
+
+function applySort() {
+  allEmails.sort((a, b) =>
+    sortOrder === 'desc' ? b.dateObj - a.dateObj : a.dateObj - b.dateObj
+  );
+  const btn = $('sort-btn');
+  btn.textContent = sortOrder === 'desc' ? '日付 ↓' : '日付 ↑';
+  btn.classList.toggle('active', sortOrder === 'asc');
+}
 
 function applyUnknownFilter(emails) {
   if (!$('filter-unknown').checked) return emails;
@@ -515,6 +542,10 @@ function applyUnknownFilter(emails) {
 async function runSearch() {
   const q = $('search-input').value;
   const results = await window.api.searchEmails(q);
+  // 検索結果にもソート順を適用
+  results.sort((a, b) =>
+    sortOrder === 'desc' ? b.dateObj - a.dateObj : a.dateObj - b.dateObj
+  );
   filteredEmails = applyUnknownFilter(results);
   updateList(q);
   showNoSelection();
@@ -527,6 +558,12 @@ $('search-input').addEventListener('input', () => {
 
 $('filter-unknown').addEventListener('change', () => {
   clearTimeout(searchTimer);
+  runSearch();
+});
+
+$('sort-btn').addEventListener('click', () => {
+  sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+  applySort();
   runSearch();
 });
 

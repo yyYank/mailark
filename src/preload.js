@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   openMboxFile: () => ipcRenderer.invoke('open-mbox-file'),
   readMbox: (filePath) => ipcRenderer.invoke('read-mbox', filePath),
   getEmailDetail: (id) => ipcRenderer.invoke('get-email-detail', id),
-  searchEmails: (query) => ipcRenderer.invoke('search-emails', query),
+  searchEmails: (params) => ipcRenderer.invoke('search-emails', params),
   saveAttachment: (data) => ipcRenderer.invoke('save-attachment', data),
   onLoadProgress: (cb) => ipcRenderer.on('load-progress', (_, data) => cb(data)),
   offLoadProgress: () => ipcRenderer.removeAllListeners('load-progress'),

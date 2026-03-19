@@ -53,12 +53,12 @@ ipcMain.handle('open-mbox-file', async () => {
 });
 
 // Read and parse mbox file (streaming to avoid string length limit)
-// 返すのはメタデータのみ。本文・添付はget-email-detailで個別取得
+// 全件はrendererに転送しない。件数だけ返してページ取得はsearch-emailsで行う
 ipcMain.handle('read-mbox', async (event, filePath) => {
   try {
     emailBodyCache.clear();
     emailMetaList = await parseMboxStream(filePath);
-    return emailMetaList;
+    return { total: emailMetaList.length };
   } catch (err) {
     return { error: err.message };
   }
@@ -69,24 +69,40 @@ ipcMain.handle('get-email-detail', async (event, id) => {
   return emailBodyCache.get(id) || { body: '', htmlBody: '', attachments: [] };
 });
 
-// from / to / subject / 本文の横断検索（本文はmain側のキャッシュを参照）
-ipcMain.handle('search-emails', async (event, query) => {
-  if (!query) return emailMetaList;
-  const q = query.toLowerCase();
-  return emailMetaList.filter(em => {
-    if (em.from.toLowerCase().includes(q)) return true;
-    if (em.to.toLowerCase().includes(q)) return true;
-    if (em.subject.toLowerCase().includes(q)) return true;
-    const detail = emailBodyCache.get(em.id);
-    if (!detail) return false;
-    if (detail.body.toLowerCase().includes(q)) return true;
-    // HTMLのみのメールはhtmlBodyからタグを除去して検索
-    if (detail.htmlBody) {
-      const text = detail.htmlBody.replace(/<[^>]*>/g, ' ').toLowerCase();
-      if (text.includes(q)) return true;
-    }
-    return false;
-  });
+// ページネーション付き検索。{ query, offset, limit, sortOrder, excludeUnknown } を受け取り { total, emails } を返す
+ipcMain.handle('search-emails', async (event, { query, offset = 0, limit = 100, sortOrder = 'desc', excludeUnknown = false }) => {
+  let results = emailMetaList;
+
+  if (excludeUnknown) {
+    results = results.filter(em => !em.from.toLowerCase().includes('unknown@unknown.com'));
+  }
+
+  if (query) {
+    const q = query.toLowerCase();
+    results = results.filter(em => {
+      if (em.from.toLowerCase().includes(q)) return true;
+      if (em.to.toLowerCase().includes(q)) return true;
+      if (em.subject.toLowerCase().includes(q)) return true;
+      const detail = emailBodyCache.get(em.id);
+      if (!detail) return false;
+      if (detail.body.toLowerCase().includes(q)) return true;
+      if (detail.htmlBody) {
+        const text = detail.htmlBody.replace(/<[^>]*>/g, ' ').toLowerCase();
+        if (text.includes(q)) return true;
+      }
+      return false;
+    });
+  }
+
+  // ソートはreference配列のコピーで行う（emailMetaList自体は変更しない）
+  const sorted = results.slice().sort((a, b) =>
+    sortOrder === 'asc' ? a.dateObj - b.dateObj : b.dateObj - a.dateObj
+  );
+
+  return {
+    total: sorted.length,
+    emails: sorted.slice(offset, offset + limit),
+  };
 });
 
 // Save attachment to temp and open

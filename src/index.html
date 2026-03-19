@@ -498,7 +498,6 @@ async function openFile() {
   currentFilePath = filePath;
   $('filename-label').textContent = filePath.split('/').pop();
   showLoading(true);
-  hideAll();
 
   window.api.offLoadProgress();
   window.api.onLoadProgress(({ percent, count }) => {
@@ -723,6 +722,8 @@ function showLoading(on) {
     $('progress-bar').style.width = '0%';
     $('progress-detail').textContent = '0%';
     $('loading').style.display = 'flex';
+  } else {
+    $('loading').style.display = 'none';
   }
 }
 

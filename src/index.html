@@ -419,8 +419,8 @@
       </div>
       <div id="attachments-area" style="display:none"></div>
       <div id="view-toggle">
-        <button class="view-btn active" id="btn-plain">テキスト</button>
-        <button class="view-btn" id="btn-html">HTML</button>
+        <button class="view-btn active" id="btn-html">HTML</button>
+        <button class="view-btn" id="btn-plain">テキスト</button>
       </div>
       <div id="email-body"></div>
       <iframe id="email-body-html" style="display:none" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
@@ -432,7 +432,7 @@
 let allEmails = [];
 let filteredEmails = [];
 let currentEmail = null;
-let viewMode = 'plain'; // 'plain' | 'html'
+let viewMode = 'html'; // 'plain' | 'html'
 let currentFilePath = '';
 
 const $ = id => document.getElementById(id);

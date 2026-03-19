@@ -465,19 +465,15 @@ $('open-btn').addEventListener('click', openFile);
 $('open-btn2').addEventListener('click', openFile);
 
 // ── Search ──
+let searchTimer = null;
 $('search-input').addEventListener('input', e => {
-  const q = e.target.value.toLowerCase();
-  if (!q) {
-    filteredEmails = [...allEmails];
-  } else {
-    filteredEmails = allEmails.filter(em =>
-      em.from.toLowerCase().includes(q) ||
-      em.subject.toLowerCase().includes(q) ||
-      em.to.toLowerCase().includes(q)
-    );
-  }
-  updateList(q);
-  showNoSelection();
+  const q = e.target.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    filteredEmails = await window.api.searchEmails(q);
+    updateList(q);
+    showNoSelection();
+  }, 200);
 });
 
 // ── Render list ──

@@ -8,6 +8,8 @@ let mainWindow;
 
 // メール本文・添付ファイルをIDで引けるキャッシュ（IPC転送量削減のため本文はリストに含めない）
 const emailBodyCache = new Map();
+// メタデータリスト（main側でfrom/to/body横断検索するために保持）
+let emailMetaList = [];
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -55,7 +57,8 @@ ipcMain.handle('open-mbox-file', async () => {
 ipcMain.handle('read-mbox', async (event, filePath) => {
   try {
     emailBodyCache.clear();
-    return await parseMboxStream(filePath);
+    emailMetaList = await parseMboxStream(filePath);
+    return emailMetaList;
   } catch (err) {
     return { error: err.message };
   }
@@ -64,6 +67,19 @@ ipcMain.handle('read-mbox', async (event, filePath) => {
 // メール本文・添付ファイルをIDで取得
 ipcMain.handle('get-email-detail', async (event, id) => {
   return emailBodyCache.get(id) || { body: '', htmlBody: '', attachments: [] };
+});
+
+// from / to / subject / 本文の横断検索（本文はmain側のキャッシュを参照）
+ipcMain.handle('search-emails', async (event, query) => {
+  if (!query) return emailMetaList;
+  const q = query.toLowerCase();
+  return emailMetaList.filter(em => {
+    if (em.from.toLowerCase().includes(q)) return true;
+    if (em.to.toLowerCase().includes(q)) return true;
+    if (em.subject.toLowerCase().includes(q)) return true;
+    const detail = emailBodyCache.get(em.id);
+    return detail ? detail.body.toLowerCase().includes(q) : false;
+  });
 });
 
 // Save attachment to temp and open

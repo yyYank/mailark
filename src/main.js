@@ -78,7 +78,14 @@ ipcMain.handle('search-emails', async (event, query) => {
     if (em.to.toLowerCase().includes(q)) return true;
     if (em.subject.toLowerCase().includes(q)) return true;
     const detail = emailBodyCache.get(em.id);
-    return detail ? detail.body.toLowerCase().includes(q) : false;
+    if (!detail) return false;
+    if (detail.body.toLowerCase().includes(q)) return true;
+    // HTMLのみのメールはhtmlBodyからタグを除去して検索
+    if (detail.htmlBody) {
+      const text = detail.htmlBody.replace(/<[^>]*>/g, ' ').toLowerCase();
+      if (text.includes(q)) return true;
+    }
+    return false;
   });
 });
 

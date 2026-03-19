@@ -97,4 +97,20 @@ describe('parseSearchQuery', () => {
     const result = parseSearchQuery('from:gmail.com');
     expect(result.from).toBe('gmail.com');
   });
+
+  test('未知の修飾子はフリーテキストとして残す', () => {
+    const result = parseSearchQuery('label:important meeting');
+    expect(result.text).toBe('label:important meeting');
+  });
+
+  test('同じ修飾子が複数ある場合は最後の値で上書きする', () => {
+    const result = parseSearchQuery('from:first@example.com from:second@example.com');
+    expect(result.from).toBe('second@example.com');
+    expect(result.text).toBe('');
+  });
+
+  test('空白だけのクエリも安全に扱える', () => {
+    const result = parseSearchQuery('   ');
+    expect(result).toEqual({ text: '' });
+  });
 });

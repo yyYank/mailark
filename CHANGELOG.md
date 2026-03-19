@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.5](https://github.com/yyYank/mailark/compare/v0.0.4...v0.0.5) - 2026-03-19
+- #5 feat: advanced search query syntax (from:, to:, since:, until:) by @yyYank in https://github.com/yyYank/mailark/pull/18
+- test: add coverage for renderer and query utilities by @yyYank in https://github.com/yyYank/mailark/pull/20
+- #3 feat: PST to mbox converter using pst-extractor by @yyYank in https://github.com/yyYank/mailark/pull/21
+
 ## [v0.0.4](https://github.com/yyYank/mailark/compare/v0.0.3...v0.0.4) - 2026-03-19
 - fix: separate release output from compiled app files by @yyYank in https://github.com/yyYank/mailark/pull/16
 

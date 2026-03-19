@@ -13,7 +13,7 @@ Browse, search, and sort through mail archives and exported message data — wit
 | フォーマット | 状態 |
 |------------|------|
 | mbox | ✅ 対応済み |
-| PST (Outlook) | 🚧 開発予定 |
+| PST (Outlook) | ✅ 対応済み |
 | Google Chat ダンプ | 🚧 開発予定 |
 | EML | 🚧 開発予定 |
 
@@ -22,6 +22,7 @@ Browse, search, and sort through mail archives and exported message data — wit
 ## 機能 / Features
 
 - 📂 mboxファイルを開いて2ペインでメール一覧表示
+- 📥 PST ファイルを開いて自動で mbox に変換して表示
 - 🔍 差出人・件名・本文の横断フルテキスト検索
 - ↕️ 日付でのソート
 - 📎 添付ファイルの確認・展開
@@ -47,7 +48,7 @@ npm start
 
 1. `npm start` でアプリを起動
 2. 右上の **「mboxを開く」** をクリック
-3. mboxファイルを選択（拡張子なしファイルも可）
+3. mbox または PST ファイルを選択（拡張子なしファイルも可）
 4. 左ペインのメール一覧からクリックして本文を表示
 5. 上部の検索バーで差出人・件名・本文を絞り込み
 6. 添付ファイルはチップをクリックで展開
@@ -62,7 +63,7 @@ npm start
 
 ## ロードマップ / Roadmap
 
-- [ ] PST形式の対応
+- [x] PST形式の対応
 - [ ] Google Chat JSONダンプの対応
 - [ ] EML形式の対応
 - [ ] 差出人・件名でのソート

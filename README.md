@@ -76,6 +76,17 @@ npm start
 PRはいつでも歓迎です。大きな変更は先にissueを立ててください。  
 PRs welcome. Please open an issue first for large changes.
 
+## リリース / Release
+
+`main` にマージされると `tagpr` がリリース PR とタグ作成を管理し、`v*` タグが作成されると GitHub Actions の release workflow が macOS / Windows / Linux 向けビルドを実行します。
+
+運用前に以下を設定してください。
+
+- `Settings > Actions > General` で `Allow GitHub Actions to create and approve pull requests` を有効化
+- repository secret `RELEASE_PAT` を追加
+
+`RELEASE_PAT` は `tagpr` が作成したタグで後続の release workflow を確実に発火させるために使います。
+
 ## ライセンス / License
 
 MIT

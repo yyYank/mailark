@@ -89,4 +89,4 @@ PRs welcome. Please open an issue first for large changes.
 
 ## ライセンス / License
 
-MIT
+Apache-2.0

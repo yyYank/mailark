@@ -2,6 +2,7 @@
   "name": "mailark",
   "version": "1.0.0",
   "description": "mbox file viewer for macOS",
+  "license": "Apache-2.0",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc && npm run bundle-renderer",

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { parseEmail, EmailMeta, Attachment, ByteRange } from './parser';
 import { parseSearchQuery } from './queryParser';
+import { convertPstToMbox } from './converter/pst';
 
 interface SearchParams {
   query?: string;
@@ -58,7 +59,9 @@ ipcMain.handle('open-mbox-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-      { name: 'mbox files', extensions: ['mbox', 'mbx', ''] },
+      { name: 'Mail files', extensions: ['mbox', 'mbx', 'pst', ''] },
+      { name: 'mbox files', extensions: ['mbox', 'mbx'] },
+      { name: 'Outlook PST', extensions: ['pst'] },
       { name: 'All Files', extensions: ['*'] },
     ],
   });
@@ -66,15 +69,24 @@ ipcMain.handle('open-mbox-file', async () => {
   return result.filePaths[0];
 });
 
-// Read and parse mbox file
+// Read and parse mbox file (PSTの場合は先にmboxへ変換する)
 // 全件はrendererに転送しない。件数だけ返してページ取得はsearch-emailsで行う
 ipcMain.handle('read-mbox', async (_event, filePath: string) => {
   try {
     emailSearchCache.clear();
     emailRangeCache.clear();
     emailMetaList = [];
-    currentMboxPath = filePath;
-    emailMetaList = await parseMboxStream(filePath);
+
+    let mboxPath = filePath;
+    if (filePath.toLowerCase().endsWith('.pst')) {
+      mainWindow?.webContents.send('load-progress', { percent: 0, count: 0, phase: 'converting' });
+      mboxPath = await convertPstToMbox(filePath, (percent, count) => {
+        mainWindow?.webContents.send('load-progress', { percent: Math.floor(percent / 2), count, phase: 'converting' });
+      });
+    }
+
+    currentMboxPath = mboxPath;
+    emailMetaList = await parseMboxStream(mboxPath);
     return { total: emailMetaList.length };
   } catch (err) {
     return { error: (err as Error).message };

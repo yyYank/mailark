@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('api', {
   getEmailDetail: (id) => ipcRenderer.invoke('get-email-detail', id),
   searchEmails: (query) => ipcRenderer.invoke('search-emails', query),
   saveAttachment: (data) => ipcRenderer.invoke('save-attachment', data),
+  onLoadProgress: (cb) => ipcRenderer.on('load-progress', (_, data) => cb(data)),
+  offLoadProgress: () => ipcRenderer.removeAllListeners('load-progress'),
 });

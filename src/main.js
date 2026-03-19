@@ -103,11 +103,23 @@ ipcMain.handle('save-attachment', async (event, { filename, data }) => {
 // Stream-based mbox parser to handle files larger than V8 string limit (~512MB)
 function parseMboxStream(filePath) {
   return new Promise((resolve, reject) => {
+    const fileSize = fs.statSync(filePath).size;
+    let bytesRead = 0;
+    let lastPercent = -1;
+
     const emails = [];
-    const rl = readline.createInterface({
-      input: fs.createReadStream(filePath, { encoding: 'utf-8' }),
-      crlfDelay: Infinity,
+    const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+
+    fileStream.on('data', (chunk) => {
+      bytesRead += Buffer.byteLength(chunk, 'utf-8');
+      const percent = fileSize > 0 ? Math.min(Math.floor(bytesRead / fileSize * 100), 99) : 0;
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        mainWindow.webContents.send('load-progress', { percent, count: emails.length });
+      }
     });
+
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
     let currentLines = [];
     let inMessage = false;
@@ -155,10 +167,12 @@ function parseMboxStream(filePath) {
       if (inMessage && currentLines.length > 0) {
         flush(currentLines);
       }
+      mainWindow.webContents.send('load-progress', { percent: 100, count: emails.length });
       resolve(emails);
     });
 
     rl.on('error', reject);
+    fileStream.on('error', reject);
   });
 }
 

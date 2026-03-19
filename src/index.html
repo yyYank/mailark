@@ -338,18 +338,32 @@
     justify-content: center;
     flex: 1;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     color: var(--text3);
   }
-  .spinner {
-    width: 28px;
-    height: 28px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  #loading .loading-label {
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  #progress-track {
+    width: 260px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.1s ease;
+  }
+  #progress-detail {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text3);
+  }
 
   .highlight { background: rgba(232,255,90,0.25); border-radius: 2px; }
 
@@ -398,8 +412,9 @@
 
     <!-- loading -->
     <div id="loading">
-      <div class="spinner"></div>
-      <span>解析中...</span>
+      <div class="loading-label">取り込み中</div>
+      <div id="progress-track"><div id="progress-bar"></div></div>
+      <div id="progress-detail">0%</div>
     </div>
 
     <!-- no selection -->
@@ -446,7 +461,14 @@ async function openFile() {
   showLoading(true);
   hideAll();
 
+  window.api.offLoadProgress();
+  window.api.onLoadProgress(({ percent, count }) => {
+    $('progress-bar').style.width = percent + '%';
+    $('progress-detail').textContent = `${percent}% — ${count}件`;
+  });
+
   const emails = await window.api.readMbox(filePath);
+  window.api.offLoadProgress();
   showLoading(false);
 
   if (emails.error) {
@@ -601,7 +623,12 @@ function showNoSelection() {
   $('no-selection').style.display = 'flex';
 }
 function showLoading(on) {
-  if (on) { hideAll(); $('loading').style.display = 'flex'; }
+  if (on) {
+    hideAll();
+    $('progress-bar').style.width = '0%';
+    $('progress-detail').textContent = '0%';
+    $('loading').style.display = 'flex';
+  }
 }
 
 function formatDate(ts) {

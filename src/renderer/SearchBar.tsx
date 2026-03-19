@@ -22,7 +22,7 @@ export default function SearchBar({
       <input
         type="text"
         id="search-input"
-        placeholder="差出人、件名、本文で検索..."
+        placeholder="検索... (例: from:gmail.com since:2022-1-1 会議)"
         disabled={disabled}
         value={query}
         onChange={onQueryChange}

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { parseEmail, EmailMeta, Attachment, ByteRange } from './parser';
+import { parseSearchQuery } from './queryParser';
 
 interface SearchParams {
   query?: string;
@@ -116,13 +117,21 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
   }
 
   if (query) {
-    const q = query.toLowerCase();
+    const parsed = parseSearchQuery(query);
     results = results.filter(em => {
-      if (em.from.toLowerCase().includes(q)) return true;
-      if (em.to.toLowerCase().includes(q)) return true;
-      if (em.subject.toLowerCase().includes(q)) return true;
-      const searchText = emailSearchCache.get(em.id) || '';
-      return searchText.includes(q);
+      if (parsed.from && !em.from.toLowerCase().includes(parsed.from.toLowerCase())) return false;
+      if (parsed.to && !em.to.toLowerCase().includes(parsed.to.toLowerCase())) return false;
+      if (parsed.since !== undefined && em.dateObj < parsed.since) return false;
+      if (parsed.until !== undefined && em.dateObj > parsed.until) return false;
+      if (parsed.text) {
+        const q = parsed.text.toLowerCase();
+        if (em.from.toLowerCase().includes(q)) return true;
+        if (em.to.toLowerCase().includes(q)) return true;
+        if (em.subject.toLowerCase().includes(q)) return true;
+        const searchText = emailSearchCache.get(em.id) || '';
+        return searchText.includes(q);
+      }
+      return true;
     });
   }
 

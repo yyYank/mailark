@@ -1,15 +1,18 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const readline = require('readline');
 const os = require('os');
 
 let mainWindow;
 
-// メール本文・添付ファイルをIDで引けるキャッシュ（IPC転送量削減のため本文はリストに含めない）
-const emailBodyCache = new Map();
-// メタデータリスト（main側でfrom/to/body横断検索するために保持）
+// 検索用テキスト（最大500文字・小文字）のみを保持。body/htmlBody/添付は持たない
+const emailSearchCache = new Map();
+// メールの byte 範囲。detail 取得時にファイルを再読み込みするために使う
+const emailRangeCache = new Map();
+// メタデータリスト
 let emailMetaList = [];
+// 現在開いているファイルパス（detail 再読み込み用）
+let currentMboxPath = '';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -52,11 +55,14 @@ ipcMain.handle('open-mbox-file', async () => {
   return result.filePaths[0];
 });
 
-// Read and parse mbox file (streaming to avoid string length limit)
+// Read and parse mbox file
 // 全件はrendererに転送しない。件数だけ返してページ取得はsearch-emailsで行う
 ipcMain.handle('read-mbox', async (event, filePath) => {
   try {
-    emailBodyCache.clear();
+    emailSearchCache.clear();
+    emailRangeCache.clear();
+    emailMetaList = [];
+    currentMboxPath = filePath;
     emailMetaList = await parseMboxStream(filePath);
     return { total: emailMetaList.length };
   } catch (err) {
@@ -64,12 +70,34 @@ ipcMain.handle('read-mbox', async (event, filePath) => {
   }
 });
 
-// メール本文・添付ファイルをIDで取得
+// メール本文・添付をファイルから再読み込みして返す（キャッシュには持たない）
 ipcMain.handle('get-email-detail', async (event, id) => {
-  return emailBodyCache.get(id) || { body: '', htmlBody: '', attachments: [] };
+  const range = emailRangeCache.get(id);
+  if (!range || !currentMboxPath) return { body: '', htmlBody: '', attachments: [] };
+
+  return new Promise((resolve) => {
+    const chunks = [];
+    const opts = { start: range.byteStart };
+    if (range.byteEnd > range.byteStart) opts.end = range.byteEnd - 1;
+
+    fs.createReadStream(currentMboxPath, opts)
+      .on('data', chunk => chunks.push(chunk))
+      .on('end', () => {
+        try {
+          const raw = Buffer.concat(chunks).toString('utf-8');
+          const email = parseEmail(raw);
+          resolve(email
+            ? { body: email.body, htmlBody: email.htmlBody, attachments: email.attachments }
+            : { body: '', htmlBody: '', attachments: [] });
+        } catch {
+          resolve({ body: '', htmlBody: '', attachments: [] });
+        }
+      })
+      .on('error', () => resolve({ body: '', htmlBody: '', attachments: [] }));
+  });
 });
 
-// ページネーション付き検索。{ query, offset, limit, sortOrder, excludeUnknown } を受け取り { total, emails } を返す
+// ページネーション付き検索
 ipcMain.handle('search-emails', async (event, { query, offset = 0, limit = 100, sortOrder = 'desc', excludeUnknown = false }) => {
   let results = emailMetaList;
 
@@ -83,18 +111,11 @@ ipcMain.handle('search-emails', async (event, { query, offset = 0, limit = 100, 
       if (em.from.toLowerCase().includes(q)) return true;
       if (em.to.toLowerCase().includes(q)) return true;
       if (em.subject.toLowerCase().includes(q)) return true;
-      const detail = emailBodyCache.get(em.id);
-      if (!detail) return false;
-      if (detail.body.toLowerCase().includes(q)) return true;
-      if (detail.htmlBody) {
-        const text = detail.htmlBody.replace(/<[^>]*>/g, ' ').toLowerCase();
-        if (text.includes(q)) return true;
-      }
-      return false;
+      const searchText = emailSearchCache.get(em.id) || '';
+      return searchText.includes(q);
     });
   }
 
-  // ソートはreference配列のコピーで行う（emailMetaList自体は変更しない）
   const sorted = results.slice().sort((a, b) =>
     sortOrder === 'asc' ? a.dateObj - b.dateObj : b.dateObj - a.dateObj
   );
@@ -116,7 +137,8 @@ ipcMain.handle('save-attachment', async (event, { filename, data }) => {
 
 // ─── mbox parser ────────────────────────────────────────────────────────────
 
-// Stream-based mbox parser to handle files larger than V8 string limit (~512MB)
+// Buffer ベースのストリームパーサー。byte offset を追跡して再読み込みに備える。
+// body/htmlBody/添付は flush 後に捨て、検索用テキスト（最大500文字）だけ保持。
 function parseMboxStream(filePath) {
   return new Promise((resolve, reject) => {
     const fileSize = fs.statSync(filePath).size;
@@ -124,33 +146,26 @@ function parseMboxStream(filePath) {
     let lastPercent = -1;
 
     const emails = [];
-    const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
-
-    fileStream.on('data', (chunk) => {
-      bytesRead += Buffer.byteLength(chunk, 'utf-8');
-      const percent = fileSize > 0 ? Math.min(Math.floor(bytesRead / fileSize * 100), 99) : 0;
-      if (percent !== lastPercent) {
-        lastPercent = percent;
-        mainWindow.webContents.send('load-progress', { percent, count: emails.length });
-      }
-    });
-
-    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-
+    let bufChunk = Buffer.alloc(0);
+    let byteOffset = 0;
+    let emailStartByte = -1;
     let currentLines = [];
     let inMessage = false;
 
-    const flush = (lines) => {
+    function flush(lines, byteStart, byteEnd) {
       try {
         const raw = lines.join('\n');
         const email = parseEmail(raw);
         if (!email) return;
-        // 本文・添付はキャッシュに保存し、IPC転送するリストにはメタデータのみ
-        emailBodyCache.set(email.id, {
-          body: email.body,
-          htmlBody: email.htmlBody,
-          attachments: email.attachments,
-        });
+
+        // 検索用テキスト（最大500文字・小文字）だけ保持
+        let searchText = email.body;
+        if (!searchText && email.htmlBody) {
+          searchText = email.htmlBody.replace(/<[^>]*>/g, ' ');
+        }
+        emailSearchCache.set(email.id, searchText.slice(0, 500).toLowerCase());
+        emailRangeCache.set(email.id, { byteStart, byteEnd });
+
         emails.push({
           id: email.id,
           from: email.from,
@@ -160,53 +175,63 @@ function parseMboxStream(filePath) {
           dateObj: email.dateObj,
           attachmentCount: email.attachments.length,
         });
+        // email.body / email.htmlBody / email.attachments はここでスコープ外になりGC対象
       } catch (e) {
         // skip malformed
       }
-    };
+    }
 
-    rl.on('line', (line) => {
-      if (/^From .+/.test(line)) {
-        // Start of a new message
-        if (inMessage && currentLines.length > 0) {
-          flush(currentLines);
-          currentLines = [];
+    const fileStream = fs.createReadStream(filePath);
+
+    fileStream.on('data', chunk => {
+      bytesRead += chunk.length;
+      const percent = fileSize > 0 ? Math.min(Math.floor(bytesRead / fileSize * 100), 99) : 0;
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        mainWindow.webContents.send('load-progress', { percent, count: emails.length });
+      }
+
+      bufChunk = Buffer.concat([bufChunk, chunk]);
+
+      let newlinePos;
+      while ((newlinePos = bufChunk.indexOf(10)) !== -1) { // 10 = '\n'
+        const hasCR = newlinePos > 0 && bufChunk[newlinePos - 1] === 13; // 13 = '\r'
+        const lineEnd = hasCR ? newlinePos - 1 : newlinePos;
+        const lineBytes = newlinePos + 1; // \n を含むバイト数（\r があっても +1 のみ）
+        const line = bufChunk.slice(0, lineEnd).toString('utf-8');
+
+        if (/^From .+/.test(line)) {
+          if (inMessage && currentLines.length > 0 && emailStartByte >= 0) {
+            flush(currentLines, emailStartByte, byteOffset);
+            currentLines = [];
+          }
+          // "From " 行の次から本文が始まる
+          emailStartByte = byteOffset + lineBytes;
+          inMessage = true;
+        } else if (inMessage) {
+          currentLines.push(line);
         }
-        inMessage = true;
-      } else if (inMessage) {
-        currentLines.push(line);
+
+        byteOffset += lineBytes;
+        bufChunk = bufChunk.slice(newlinePos + 1);
       }
     });
 
-    rl.on('close', () => {
-      // Process the last message
-      if (inMessage && currentLines.length > 0) {
-        flush(currentLines);
+    fileStream.on('end', () => {
+      // 末尾に改行なしで終わる場合の残りバッファ処理
+      if (bufChunk.length > 0) {
+        if (inMessage) currentLines.push(bufChunk.toString('utf-8'));
+        byteOffset += bufChunk.length;
+      }
+      if (inMessage && currentLines.length > 0 && emailStartByte >= 0) {
+        flush(currentLines, emailStartByte, byteOffset);
       }
       mainWindow.webContents.send('load-progress', { percent: 100, count: emails.length });
       resolve(emails);
     });
 
-    rl.on('error', reject);
     fileStream.on('error', reject);
   });
-}
-
-function parseMbox(content) {
-  const emails = [];
-  // Split on "From " separator lines
-  const rawMessages = content.split(/^From .+\r?\n/m).filter(Boolean);
-
-  for (const raw of rawMessages) {
-    try {
-      const email = parseEmail(raw);
-      if (email) emails.push(email);
-    } catch (e) {
-      // skip malformed
-    }
-  }
-
-  return emails;
 }
 
 function parseEmail(raw) {

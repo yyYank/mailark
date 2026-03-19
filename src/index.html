@@ -106,6 +106,21 @@
     font-family: 'DM Mono', monospace;
     white-space: nowrap;
   }
+  #filter-unknown-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  #filter-unknown-label input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
 
   /* ── MAIN LAYOUT ── */
   #main {
@@ -388,6 +403,9 @@
 <!-- SEARCH BAR -->
 <div id="search-bar">
   <input type="text" id="search-input" placeholder="差出人、件名、本文で検索..." disabled>
+  <label id="filter-unknown-label">
+    <input type="checkbox" id="filter-unknown"> unknown除外
+  </label>
   <span id="mail-count">—</span>
 </div>
 
@@ -477,7 +495,7 @@ async function openFile() {
   }
 
   allEmails = emails.sort((a, b) => b.dateObj - a.dateObj);
-  filteredEmails = [...allEmails];
+  filteredEmails = applyUnknownFilter(allEmails);
   $('search-input').disabled = false;
   updateList();
   showNoSelection();
@@ -486,16 +504,30 @@ async function openFile() {
 $('open-btn').addEventListener('click', openFile);
 $('open-btn2').addEventListener('click', openFile);
 
-// ── Search ──
+// ── Search & filter ──
 let searchTimer = null;
-$('search-input').addEventListener('input', e => {
-  const q = e.target.value;
+
+function applyUnknownFilter(emails) {
+  if (!$('filter-unknown').checked) return emails;
+  return emails.filter(em => !em.from.toLowerCase().includes('unknown@unknown.com'));
+}
+
+async function runSearch() {
+  const q = $('search-input').value;
+  const results = await window.api.searchEmails(q);
+  filteredEmails = applyUnknownFilter(results);
+  updateList(q);
+  showNoSelection();
+}
+
+$('search-input').addEventListener('input', () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    filteredEmails = await window.api.searchEmails(q);
-    updateList(q);
-    showNoSelection();
-  }, 200);
+  searchTimer = setTimeout(runSearch, 200);
+});
+
+$('filter-unknown').addEventListener('change', () => {
+  clearTimeout(searchTimer);
+  runSearch();
 });
 
 // ── Render list ──

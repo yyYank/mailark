@@ -25,6 +25,10 @@
     "appId": "com.mailark.app",
     "productName": "mailark",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "dist/**/*",
+      "src/index.html"
+    ],
     "mac": {
       "target": [
         {

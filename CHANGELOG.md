@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.3](https://github.com/yyYank/mailark/compare/v0.0.2...v0.0.3) - 2026-03-19
+- feat: index.htmlのレンダラーをReactに移行 by @yyYank in https://github.com/yyYank/mailark/pull/12
+
 ## [v0.0.2](https://github.com/yyYank/mailark/compare/v0.0.1...v0.0.2) - 2026-03-19
 - fix: include compiled app files in release package by @yyYank in https://github.com/yyYank/mailark/pull/13
 

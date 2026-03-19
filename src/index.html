@@ -631,7 +631,7 @@ function updateList() {
 
 // ── Select email ──
 async function selectEmail(index) {
-  const email = filteredEmails[index];
+  const email = displayedEmails[index];
   if (!email) return;
 
   document.querySelectorAll('.email-item').forEach((el, i) => {

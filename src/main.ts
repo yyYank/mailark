@@ -1,20 +1,69 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
-let mainWindow;
+interface EmailMeta {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  dateObj: number;
+  attachmentCount: number;
+}
+
+interface Attachment {
+  filename: string;
+  contentType: string;
+  data: string;
+  encoding: string;
+}
+
+interface Email {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  dateObj: number;
+  body: string;
+  htmlBody: string;
+  attachments: Attachment[];
+  raw: string;
+}
+
+interface ByteRange {
+  byteStart: number;
+  byteEnd: number;
+}
+
+interface MimePart {
+  body: string;
+  htmlBody: string;
+  attachments: Attachment[];
+}
+
+interface SearchParams {
+  query?: string;
+  offset?: number;
+  limit?: number;
+  sortOrder?: 'asc' | 'desc';
+  excludeUnknown?: boolean;
+}
+
+let mainWindow: BrowserWindow | null = null;
 
 // 検索用テキスト（最大500文字・小文字）のみを保持。body/htmlBody/添付は持たない
-const emailSearchCache = new Map();
+const emailSearchCache = new Map<string, string>();
 // メールの byte 範囲。detail 取得時にファイルを再読み込みするために使う
-const emailRangeCache = new Map();
+const emailRangeCache = new Map<string, ByteRange>();
 // メタデータリスト
-let emailMetaList = [];
+let emailMetaList: EmailMeta[] = [];
 // 現在開いているファイルパス（detail 再読み込み用）
 let currentMboxPath = '';
 
-function createWindow() {
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -29,7 +78,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
 }
 
 app.whenReady().then(createWindow);
@@ -44,6 +93,7 @@ app.on('activate', () => {
 
 // Open file dialog
 ipcMain.handle('open-mbox-file', async () => {
+  if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
@@ -57,7 +107,7 @@ ipcMain.handle('open-mbox-file', async () => {
 
 // Read and parse mbox file
 // 全件はrendererに転送しない。件数だけ返してページ取得はsearch-emailsで行う
-ipcMain.handle('read-mbox', async (event, filePath) => {
+ipcMain.handle('read-mbox', async (_event, filePath: string) => {
   try {
     emailSearchCache.clear();
     emailRangeCache.clear();
@@ -66,22 +116,22 @@ ipcMain.handle('read-mbox', async (event, filePath) => {
     emailMetaList = await parseMboxStream(filePath);
     return { total: emailMetaList.length };
   } catch (err) {
-    return { error: err.message };
+    return { error: (err as Error).message };
   }
 });
 
 // メール本文・添付をファイルから再読み込みして返す（キャッシュには持たない）
-ipcMain.handle('get-email-detail', async (event, id) => {
+ipcMain.handle('get-email-detail', async (_event, id: string) => {
   const range = emailRangeCache.get(id);
   if (!range || !currentMboxPath) return { body: '', htmlBody: '', attachments: [] };
 
-  return new Promise((resolve) => {
-    const chunks = [];
-    const opts = { start: range.byteStart };
+  return new Promise<{ body: string; htmlBody: string; attachments: Attachment[] }>((resolve) => {
+    const chunks: Buffer[] = [];
+    const opts: { start: number; end?: number } = { start: range.byteStart };
     if (range.byteEnd > range.byteStart) opts.end = range.byteEnd - 1;
 
     fs.createReadStream(currentMboxPath, opts)
-      .on('data', chunk => chunks.push(chunk))
+      .on('data', (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
       .on('end', () => {
         try {
           const raw = Buffer.concat(chunks).toString('utf-8');
@@ -98,7 +148,7 @@ ipcMain.handle('get-email-detail', async (event, id) => {
 });
 
 // ページネーション付き検索
-ipcMain.handle('search-emails', async (event, { query, offset = 0, limit = 100, sortOrder = 'desc', excludeUnknown = false }) => {
+ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100, sortOrder = 'desc', excludeUnknown = false }: SearchParams) => {
   let results = emailMetaList;
 
   if (excludeUnknown) {
@@ -127,7 +177,7 @@ ipcMain.handle('search-emails', async (event, { query, offset = 0, limit = 100, 
 });
 
 // Save attachment to temp and open
-ipcMain.handle('save-attachment', async (event, { filename, data }) => {
+ipcMain.handle('save-attachment', async (_event, { filename, data }: { filename: string; data: string }) => {
   const tmpDir = os.tmpdir();
   const outPath = path.join(tmpDir, filename);
   fs.writeFileSync(outPath, Buffer.from(data, 'base64'));
@@ -139,20 +189,20 @@ ipcMain.handle('save-attachment', async (event, { filename, data }) => {
 
 // Buffer ベースのストリームパーサー。byte offset を追跡して再読み込みに備える。
 // body/htmlBody/添付は flush 後に捨て、検索用テキスト（最大500文字）だけ保持。
-function parseMboxStream(filePath) {
+function parseMboxStream(filePath: string): Promise<EmailMeta[]> {
   return new Promise((resolve, reject) => {
     const fileSize = fs.statSync(filePath).size;
     let bytesRead = 0;
     let lastPercent = -1;
 
-    const emails = [];
+    const emails: EmailMeta[] = [];
     let bufChunk = Buffer.alloc(0);
     let byteOffset = 0;
     let emailStartByte = -1;
-    let currentLines = [];
+    let currentLines: string[] = [];
     let inMessage = false;
 
-    function flush(lines, byteStart, byteEnd) {
+    function flush(lines: string[], byteStart: number, byteEnd: number): void {
       try {
         const raw = lines.join('\n');
         const email = parseEmail(raw);
@@ -176,24 +226,25 @@ function parseMboxStream(filePath) {
           attachmentCount: email.attachments.length,
         });
         // email.body / email.htmlBody / email.attachments はここでスコープ外になりGC対象
-      } catch (e) {
+      } catch {
         // skip malformed
       }
     }
 
     const fileStream = fs.createReadStream(filePath);
 
-    fileStream.on('data', chunk => {
-      bytesRead += chunk.length;
+    fileStream.on('data', (chunk: Buffer | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytesRead += buf.length;
       const percent = fileSize > 0 ? Math.min(Math.floor(bytesRead / fileSize * 100), 99) : 0;
       if (percent !== lastPercent) {
         lastPercent = percent;
-        mainWindow.webContents.send('load-progress', { percent, count: emails.length });
+        mainWindow?.webContents.send('load-progress', { percent, count: emails.length });
       }
 
-      bufChunk = Buffer.concat([bufChunk, chunk]);
+      bufChunk = Buffer.concat([bufChunk, buf]);
 
-      let newlinePos;
+      let newlinePos: number;
       while ((newlinePos = bufChunk.indexOf(10)) !== -1) { // 10 = '\n'
         const hasCR = newlinePos > 0 && bufChunk[newlinePos - 1] === 13; // 13 = '\r'
         const lineEnd = hasCR ? newlinePos - 1 : newlinePos;
@@ -226,7 +277,7 @@ function parseMboxStream(filePath) {
       if (inMessage && currentLines.length > 0 && emailStartByte >= 0) {
         flush(currentLines, emailStartByte, byteOffset);
       }
-      mainWindow.webContents.send('load-progress', { percent: 100, count: emails.length });
+      mainWindow?.webContents.send('load-progress', { percent: 100, count: emails.length });
       resolve(emails);
     });
 
@@ -234,12 +285,12 @@ function parseMboxStream(filePath) {
   });
 }
 
-function parseEmail(raw) {
+function parseEmail(raw: string): Email | null {
   const [headerSection, ...bodyParts] = raw.split(/\r?\n\r?\n/);
   const bodyRaw = bodyParts.join('\n\n');
 
   // Parse headers
-  const headers = {};
+  const headers: Record<string, string> = {};
   const headerLines = headerSection.replace(/\r?\n\s+/g, ' ').split(/\r?\n/);
   for (const line of headerLines) {
     const match = line.match(/^([^:]+):\s*(.*)$/);
@@ -269,10 +320,10 @@ function parseEmail(raw) {
   };
 }
 
-function parseMimePart(contentType, encoding, bodyRaw, fullRaw) {
+function parseMimePart(contentType: string, encoding: string, bodyRaw: string, fullRaw: string): MimePart {
   let body = '';
   let htmlBody = '';
-  let attachments = [];
+  let attachments: Attachment[] = [];
 
   const boundaryMatch = contentType.match(/boundary="?([^";]+)"?/i);
 
@@ -283,7 +334,7 @@ function parseMimePart(contentType, encoding, bodyRaw, fullRaw) {
     for (const part of parts.slice(1)) {
       const [partHeaderRaw, ...partBodyParts] = part.split(/\r?\n\r?\n/);
       const partBody = partBodyParts.join('\n\n').trim();
-      const partHeaders = {};
+      const partHeaders: Record<string, string> = {};
       const partHeaderLines = partHeaderRaw.replace(/\r?\n\s+/g, ' ').split(/\r?\n/);
       for (const line of partHeaderLines) {
         const m = line.match(/^([^:]+):\s*(.*)$/);
@@ -325,7 +376,7 @@ function parseMimePart(contentType, encoding, bodyRaw, fullRaw) {
   return { body, htmlBody, attachments };
 }
 
-function decodeBody(body, encoding) {
+function decodeBody(body: string, encoding: string): string {
   const enc = (encoding || '').toLowerCase().trim();
   if (enc === 'base64') {
     try {
@@ -340,15 +391,15 @@ function decodeBody(body, encoding) {
   return body;
 }
 
-function decodeHeader(value) {
+function decodeHeader(value: string): string {
   if (!value) return '';
   // RFC2047 encoded words: =?charset?encoding?text?=
-  return value.replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_, charset, enc, text) => {
+  return value.replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_match, _charset, enc, text) => {
     try {
       if (enc.toUpperCase() === 'B') {
         return Buffer.from(text, 'base64').toString('utf-8');
       } else {
-        const decoded = text.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (__, hex) =>
+        const decoded = text.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (_: string, hex: string) =>
           String.fromCharCode(parseInt(hex, 16))
         );
         return decoded;
@@ -357,11 +408,11 @@ function decodeHeader(value) {
   });
 }
 
-function parseDate(dateStr) {
+function parseDate(dateStr: string | undefined): number {
   if (!dateStr) return 0;
   try { return new Date(dateStr).getTime(); } catch { return 0; }
 }
 
-function escapeRegex(str) {
+function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

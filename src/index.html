@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none';">
+<title>mbox Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0f10;
+    --bg2: #17171a;
+    --bg3: #1e1e23;
+    --bg4: #252529;
+    --border: #2a2a30;
+    --accent: #e8ff5a;
+    --accent2: #5affd4;
+    --text: #e8e8f0;
+    --text2: #888898;
+    --text3: #555565;
+    --danger: #ff6b6b;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-app-region: no-drag;
+  }
+
+  /* ── TITLEBAR ── */
+  #titlebar {
+    height: 52px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px 0 80px;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    gap: 12px;
+  }
+  #titlebar .app-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  #titlebar .file-name {
+    font-size: 12px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+  }
+  #titlebar .spacer { flex: 1; }
+  #open-btn {
+    -webkit-app-region: no-drag;
+    background: var(--accent);
+    color: #0f0f10;
+    border: none;
+    padding: 7px 16px;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    letter-spacing: 0.02em;
+  }
+  #open-btn:hover { opacity: 0.85; }
+
+  /* ── SEARCH BAR ── */
+  #search-bar {
+    padding: 10px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  #search-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search-input:focus { border-color: var(--accent); }
+  #search-input::placeholder { color: var(--text3); }
+  #mail-count {
+    font-size: 12px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── EMAIL LIST ── */
+  #email-list {
+    width: 320px;
+    min-width: 240px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    background: var(--bg2);
+  }
+  #email-list::-webkit-scrollbar { width: 4px; }
+  #email-list::-webkit-scrollbar-track { background: transparent; }
+  #email-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .email-item {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+  }
+  .email-item:hover { background: var(--bg3); }
+  .email-item.active {
+    background: var(--bg3);
+    border-left: 2px solid var(--accent);
+  }
+  .email-item .from {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .email-item .subject {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .email-item .meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .email-item .date {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+  }
+  .email-item .attach-badge {
+    font-size: 10px;
+    background: var(--bg4);
+    color: var(--accent2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── EMAIL DETAIL ── */
+  #email-detail {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+  #email-detail::-webkit-scrollbar { width: 4px; }
+  #email-detail::-webkit-scrollbar-track { background: transparent; }
+  #email-detail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  #detail-header {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #detail-subject {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 14px;
+    line-height: 1.3;
+  }
+  .detail-meta {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .detail-meta .label {
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    padding-top: 1px;
+  }
+  .detail-meta .value { color: var(--text2); word-break: break-all; }
+
+  /* Attachments */
+  #attachments-area {
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .attach-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    font-size: 12px;
+  }
+  .attach-chip:hover {
+    border-color: var(--accent2);
+    background: var(--bg4);
+  }
+  .attach-chip .attach-icon { font-size: 16px; }
+  .attach-chip .attach-name { color: var(--text); font-weight: 500; }
+  .attach-chip .attach-type { color: var(--text3); font-family: 'DM Mono', monospace; font-size: 11px; }
+
+  /* Body view toggle */
+  #view-toggle {
+    display: flex;
+    gap: 0;
+    padding: 12px 28px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .view-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text3);
+    padding: 5px 14px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .view-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .view-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
+  .view-btn.active { background: var(--accent); color: #0f0f10; border-color: var(--accent); font-weight: 600; }
+
+  #email-body {
+    flex: 1;
+    padding: 24px 28px;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text2);
+    white-space: pre-wrap;
+    font-family: 'DM Mono', monospace;
+    word-break: break-word;
+  }
+  #email-body-html {
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: #fff;
+    min-height: 400px;
+  }
+
+  /* Empty state */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text3);
+  }
+  #empty-state .icon {
+    font-size: 48px;
+    opacity: 0.4;
+  }
+  #empty-state .title {
+    font-size: 16px;
+    color: var(--text2);
+    font-weight: 500;
+  }
+  #empty-state .sub {
+    font-size: 13px;
+    text-align: center;
+    max-width: 280px;
+    line-height: 1.6;
+  }
+  #empty-state .open-link {
+    margin-top: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    padding: 9px 20px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    transition: border-color 0.15s;
+  }
+  #empty-state .open-link:hover { border-color: var(--accent); }
+
+  /* No selection */
+  #no-selection {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text3);
+    font-size: 14px;
+  }
+
+  /* Loading */
+  #loading {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--text3);
+  }
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .highlight { background: rgba(232,255,90,0.25); border-radius: 2px; }
+
+  #email-list-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text3);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- TITLEBAR -->
+<div id="titlebar">
+  <span class="app-name">MBOX//</span>
+  <span class="file-name" id="filename-label">ファイル未選択</span>
+  <div class="spacer"></div>
+  <button id="open-btn">📂 mboxを開く</button>
+</div>
+
+<!-- SEARCH BAR -->
+<div id="search-bar">
+  <input type="text" id="search-input" placeholder="差出人、件名、本文で検索..." disabled>
+  <span id="mail-count">—</span>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- EMAIL LIST -->
+  <div id="email-list">
+    <div id="empty-list-msg" style="padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;">
+      mboxファイルを開いてください
+    </div>
+  </div>
+
+  <!-- EMAIL DETAIL -->
+  <div id="email-detail">
+    <!-- empty state -->
+    <div id="empty-state">
+      <div class="icon">📬</div>
+      <div class="title">mbox Viewer</div>
+      <div class="sub">mboxファイルを開くと、メールの一覧と本文を表示できます</div>
+      <button class="open-link" id="open-btn2">mboxファイルを選択</button>
+    </div>
+
+    <!-- loading -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>解析中...</span>
+    </div>
+
+    <!-- no selection -->
+    <div id="no-selection" style="display:none">
+      <span>← メールを選択してください</span>
+    </div>
+
+    <!-- detail content -->
+    <div id="detail-content" style="display:none; flex-direction:column; flex:1;">
+      <div id="detail-header">
+        <div id="detail-subject">件名</div>
+        <div class="detail-meta">
+          <span class="label">From</span><span class="value" id="detail-from"></span>
+          <span class="label">To</span><span class="value" id="detail-to"></span>
+          <span class="label">Date</span><span class="value" id="detail-date"></span>
+        </div>
+      </div>
+      <div id="attachments-area" style="display:none"></div>
+      <div id="view-toggle">
+        <button class="view-btn active" id="btn-plain">テキスト</button>
+        <button class="view-btn" id="btn-html">HTML</button>
+      </div>
+      <div id="email-body"></div>
+      <iframe id="email-body-html" style="display:none" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+let allEmails = [];
+let filteredEmails = [];
+let currentEmail = null;
+let viewMode = 'plain'; // 'plain' | 'html'
+let currentFilePath = '';
+
+const $ = id => document.getElementById(id);
+
+// ── Open file ──
+async function openFile() {
+  const filePath = await window.api.openMboxFile();
+  if (!filePath) return;
+  currentFilePath = filePath;
+  $('filename-label').textContent = filePath.split('/').pop();
+  showLoading(true);
+  hideAll();
+
+  const emails = await window.api.readMbox(filePath);
+  showLoading(false);
+
+  if (emails.error) {
+    alert('読み込みエラー: ' + emails.error);
+    return;
+  }
+
+  allEmails = emails.sort((a, b) => b.dateObj - a.dateObj);
+  filteredEmails = [...allEmails];
+  $('search-input').disabled = false;
+  updateList();
+  showNoSelection();
+}
+
+$('open-btn').addEventListener('click', openFile);
+$('open-btn2').addEventListener('click', openFile);
+
+// ── Search ──
+$('search-input').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  if (!q) {
+    filteredEmails = [...allEmails];
+  } else {
+    filteredEmails = allEmails.filter(em =>
+      em.from.toLowerCase().includes(q) ||
+      em.subject.toLowerCase().includes(q) ||
+      em.body.toLowerCase().includes(q) ||
+      em.to.toLowerCase().includes(q)
+    );
+  }
+  updateList(q);
+  showNoSelection();
+});
+
+// ── Render list ──
+function updateList(query = '') {
+  const list = $('email-list');
+  $('mail-count').textContent = `${filteredEmails.length} / ${allEmails.length} 件`;
+
+  if (filteredEmails.length === 0) {
+    list.innerHTML = '<div id="email-list-empty">該当するメールがありません</div>';
+    return;
+  }
+
+  list.innerHTML = filteredEmails.map((em, i) => {
+    const fromDisplay = highlight(escHtml(em.from), query);
+    const subDisplay = highlight(escHtml(em.subject), query);
+    const dateStr = formatDate(em.dateObj);
+    const attachBadge = em.attachments.length > 0
+      ? `<span class="attach-badge">📎 ${em.attachments.length}</span>` : '';
+    return `
+      <div class="email-item" data-index="${i}" tabindex="0">
+        <div class="from">${fromDisplay}</div>
+        <div class="subject">${subDisplay}</div>
+        <div class="meta">
+          <span class="date">${dateStr}</span>
+          ${attachBadge}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.email-item').forEach(el => {
+    el.addEventListener('click', () => selectEmail(parseInt(el.dataset.index)));
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') selectEmail(parseInt(el.dataset.index));
+    });
+  });
+}
+
+// ── Select email ──
+function selectEmail(index) {
+  const email = filteredEmails[index];
+  if (!email) return;
+  currentEmail = email;
+
+  document.querySelectorAll('.email-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+
+  hideAll();
+  const dc = $('detail-content');
+  dc.style.display = 'flex';
+
+  $('detail-subject').textContent = email.subject;
+  $('detail-from').textContent = email.from;
+  $('detail-to').textContent = email.to || '—';
+  $('detail-date').textContent = email.date || '—';
+
+  // Attachments
+  const aa = $('attachments-area');
+  if (email.attachments.length > 0) {
+    aa.style.display = 'flex';
+    aa.innerHTML = email.attachments.map((att, i) => `
+      <div class="attach-chip" data-att="${i}">
+        <span class="attach-icon">${fileIcon(att.contentType)}</span>
+        <span class="attach-name">${escHtml(att.filename)}</span>
+        <span class="attach-type">${att.contentType.split('/')[1] || 'file'}</span>
+      </div>
+    `).join('');
+    aa.querySelectorAll('.attach-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const att = email.attachments[parseInt(chip.dataset.att)];
+        window.api.saveAttachment({ filename: att.filename, data: att.data });
+      });
+    });
+  } else {
+    aa.style.display = 'none';
+    aa.innerHTML = '';
+  }
+
+  renderBody();
+}
+
+// ── Body rendering ──
+function renderBody() {
+  if (!currentEmail) return;
+  if (viewMode === 'plain') {
+    $('email-body').style.display = 'block';
+    $('email-body-html').style.display = 'none';
+    $('email-body').textContent = currentEmail.body || '(本文なし)';
+  } else {
+    $('email-body').style.display = 'none';
+    const iframe = $('email-body-html');
+    iframe.style.display = 'block';
+    const html = currentEmail.htmlBody || `<pre style="font-family:monospace;padding:24px">${escHtml(currentEmail.body || '(本文なし)')}</pre>`;
+    iframe.srcdoc = html;
+  }
+}
+
+$('btn-plain').addEventListener('click', () => {
+  viewMode = 'plain';
+  $('btn-plain').classList.add('active');
+  $('btn-html').classList.remove('active');
+  renderBody();
+});
+
+$('btn-html').addEventListener('click', () => {
+  viewMode = 'html';
+  $('btn-html').classList.add('active');
+  $('btn-plain').classList.remove('active');
+  renderBody();
+});
+
+// ── UI helpers ──
+function hideAll() {
+  $('empty-state').style.display = 'none';
+  $('loading').style.display = 'none';
+  $('no-selection').style.display = 'none';
+  $('detail-content').style.display = 'none';
+}
+function showNoSelection() {
+  hideAll();
+  $('no-selection').style.display = 'flex';
+}
+function showLoading(on) {
+  if (on) { hideAll(); $('loading').style.display = 'flex'; }
+}
+
+function formatDate(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function highlight(html, query) {
+  if (!query) return html;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp(`(${escaped})`, 'gi'), '<span class="highlight">$1</span>');
+}
+
+function fileIcon(ct) {
+  if (ct.includes('image')) return '🖼️';
+  if (ct.includes('pdf')) return '📄';
+  if (ct.includes('zip') || ct.includes('compressed')) return '🗜️';
+  if (ct.includes('video')) return '🎬';
+  if (ct.includes('audio')) return '🎵';
+  if (ct.includes('text')) return '📝';
+  return '📎';
+}
+</script>
+</body>
+</html>

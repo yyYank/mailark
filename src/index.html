@@ -473,7 +473,6 @@ $('search-input').addEventListener('input', e => {
     filteredEmails = allEmails.filter(em =>
       em.from.toLowerCase().includes(q) ||
       em.subject.toLowerCase().includes(q) ||
-      em.body.toLowerCase().includes(q) ||
       em.to.toLowerCase().includes(q)
     );
   }
@@ -495,8 +494,8 @@ function updateList(query = '') {
     const fromDisplay = highlight(escHtml(em.from), query);
     const subDisplay = highlight(escHtml(em.subject), query);
     const dateStr = formatDate(em.dateObj);
-    const attachBadge = em.attachments.length > 0
-      ? `<span class="attach-badge">📎 ${em.attachments.length}</span>` : '';
+    const attachBadge = em.attachmentCount > 0
+      ? `<span class="attach-badge">📎 ${em.attachmentCount}</span>` : '';
     return `
       <div class="email-item" data-index="${i}" tabindex="0">
         <div class="from">${fromDisplay}</div>
@@ -518,10 +517,9 @@ function updateList(query = '') {
 }
 
 // ── Select email ──
-function selectEmail(index) {
+async function selectEmail(index) {
   const email = filteredEmails[index];
   if (!email) return;
-  currentEmail = email;
 
   document.querySelectorAll('.email-item').forEach((el, i) => {
     el.classList.toggle('active', i === index);
@@ -536,11 +534,15 @@ function selectEmail(index) {
   $('detail-to').textContent = email.to || '—';
   $('detail-date').textContent = email.date || '—';
 
+  // 本文・添付をオンデマンド取得（IPC転送量削減のためリストには含まれていない）
+  const detail = await window.api.getEmailDetail(email.id);
+  currentEmail = { ...email, ...detail };
+
   // Attachments
   const aa = $('attachments-area');
-  if (email.attachments.length > 0) {
+  if (detail.attachments.length > 0) {
     aa.style.display = 'flex';
-    aa.innerHTML = email.attachments.map((att, i) => `
+    aa.innerHTML = detail.attachments.map((att, i) => `
       <div class="attach-chip" data-att="${i}">
         <span class="attach-icon">${fileIcon(att.contentType)}</span>
         <span class="attach-name">${escHtml(att.filename)}</span>
@@ -549,7 +551,7 @@ function selectEmail(index) {
     `).join('');
     aa.querySelectorAll('.attach-chip').forEach(chip => {
       chip.addEventListener('click', () => {
-        const att = email.attachments[parseInt(chip.dataset.att)];
+        const att = detail.attachments[parseInt(chip.dataset.att)];
         window.api.saveAttachment({ filename: att.filename, data: att.data });
       });
     });

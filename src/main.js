@@ -6,6 +6,9 @@ const os = require('os');
 
 let mainWindow;
 
+// メール本文・添付ファイルをIDで引けるキャッシュ（IPC転送量削減のため本文はリストに含めない）
+const emailBodyCache = new Map();
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -48,12 +51,19 @@ ipcMain.handle('open-mbox-file', async () => {
 });
 
 // Read and parse mbox file (streaming to avoid string length limit)
+// 返すのはメタデータのみ。本文・添付はget-email-detailで個別取得
 ipcMain.handle('read-mbox', async (event, filePath) => {
   try {
+    emailBodyCache.clear();
     return await parseMboxStream(filePath);
   } catch (err) {
     return { error: err.message };
   }
+});
+
+// メール本文・添付ファイルをIDで取得
+ipcMain.handle('get-email-detail', async (event, id) => {
+  return emailBodyCache.get(id) || { body: '', htmlBody: '', attachments: [] };
 });
 
 // Save attachment to temp and open
@@ -79,17 +89,36 @@ function parseMboxStream(filePath) {
     let currentLines = [];
     let inMessage = false;
 
+    const flush = (lines) => {
+      try {
+        const raw = lines.join('\n');
+        const email = parseEmail(raw);
+        if (!email) return;
+        // 本文・添付はキャッシュに保存し、IPC転送するリストにはメタデータのみ
+        emailBodyCache.set(email.id, {
+          body: email.body,
+          htmlBody: email.htmlBody,
+          attachments: email.attachments,
+        });
+        emails.push({
+          id: email.id,
+          from: email.from,
+          to: email.to,
+          subject: email.subject,
+          date: email.date,
+          dateObj: email.dateObj,
+          attachmentCount: email.attachments.length,
+        });
+      } catch (e) {
+        // skip malformed
+      }
+    };
+
     rl.on('line', (line) => {
       if (/^From .+/.test(line)) {
         // Start of a new message
         if (inMessage && currentLines.length > 0) {
-          try {
-            const raw = currentLines.join('\n');
-            const email = parseEmail(raw);
-            if (email) emails.push(email);
-          } catch (e) {
-            // skip malformed
-          }
+          flush(currentLines);
           currentLines = [];
         }
         inMessage = true;
@@ -101,13 +130,7 @@ function parseMboxStream(filePath) {
     rl.on('close', () => {
       // Process the last message
       if (inMessage && currentLines.length > 0) {
-        try {
-          const raw = currentLines.join('\n');
-          const email = parseEmail(raw);
-          if (email) emails.push(email);
-        } catch (e) {
-          // skip malformed
-        }
+        flush(currentLines);
       }
       resolve(emails);
     });

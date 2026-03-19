@@ -2,17 +2,24 @@
   "name": "mbox-viewer",
   "version": "1.0.0",
   "description": "mbox file viewer for macOS",
-  "main": "src/main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder --publish never",
+    "compile": "tsc",
+    "test": "jest",
+    "start": "tsc && electron .",
+    "build": "npm run compile && electron-builder --publish never",
     "build:mac": "npm run build -- --mac dmg --universal",
     "build:win": "npm run build -- --win nsis --x64",
     "build:linux": "npm run build -- --linux AppImage --x64"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
     "electron": "^28.0.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.0.0"
   },
   "build": {
     "appId": "com.mailark.app",

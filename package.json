@@ -5,16 +5,49 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac"
+    "build": "electron-builder --publish never",
+    "build:mac": "npm run build -- --mac dmg --universal",
+    "build:win": "npm run build -- --win nsis --x64",
+    "build:linux": "npm run build -- --linux AppImage --x64"
   },
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0"
   },
   "build": {
-    "appId": "com.mboxviewer.app",
+    "appId": "com.mailark.app",
+    "productName": "mailark",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
       "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     }
   }
 }

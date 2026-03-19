@@ -1,5 +1,5 @@
 {
-  "name": "mbox-viewer",
+  "name": "mailark",
   "version": "1.0.0",
   "description": "mbox file viewer for macOS",
   "main": "dist/main.js",

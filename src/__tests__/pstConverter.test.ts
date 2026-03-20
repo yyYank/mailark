@@ -1,4 +1,5 @@
-import { buildMboxEntry, formatMboxDate } from '../converter/pst';
+import { buildMboxEntry, formatMboxDate, collectMessages } from '../converter/pst';
+import { PSTFolder, PSTMessage } from 'pst-extractor';
 
 // ─── formatMboxDate ──────────────────────────────────────────────────────────
 
@@ -81,5 +82,83 @@ describe('buildMboxEntry', () => {
     const msg = { ...baseMessage, body: '', bodyHTML: '<p>HTML content</p>' };
     const result = buildMboxEntry(msg as any);
     expect(result).toContain('<p>HTML content</p>');
+  });
+});
+
+// ─── collectMessages ──────────────────────────────────────────────────────────
+
+describe('collectMessages', () => {
+  function makeFolder(overrides: Partial<{
+    contentCount: number;
+    getNextChild: () => PSTMessage | null;
+    getSubFolders: () => PSTFolder[];
+    displayName: string;
+  }>): PSTFolder {
+    return {
+      contentCount: 0,
+      displayName: 'TestFolder',
+      getNextChild: () => null,
+      getSubFolders: () => [],
+      ...overrides,
+    } as unknown as PSTFolder;
+  }
+
+  test('getSubFoldersがエラーを投げてもクラッシュせず処理を続行する', () => {
+    // SPAM Search Folder 2 のような壊れたフォルダを想定
+    const brokenFolder = makeFolder({
+      displayName: 'SPAM Search Folder 2',
+      getSubFolders: () => { throw new Error('PSTFile::findBtreeItem Unable to find 8750 is desc: true'); },
+    });
+    const collected: PSTMessage[] = [];
+    // 例外がスローされずに完了すること
+    expect(() => collectMessages(brokenFolder, (msg) => collected.push(msg))).not.toThrow();
+    expect(collected).toHaveLength(0);
+  });
+
+  test('getNextChildがエラーを投げてもクラッシュせずスキップする', () => {
+    const brokenFolder = makeFolder({
+      contentCount: 1,
+      getNextChild: () => { throw new Error('PSTFile::findBtreeItem Unable to find 8750 is desc: true'); },
+    });
+    const collected: PSTMessage[] = [];
+    expect(() => collectMessages(brokenFolder, (msg) => collected.push(msg))).not.toThrow();
+    expect(collected).toHaveLength(0);
+  });
+
+  test('正常なフォルダのメッセージは収集できる', () => {
+    // instanceof PSTMessage を通すため Object.create で本物のプロトタイプを持たせる
+    const fakeMsg = Object.create(PSTMessage.prototype) as PSTMessage;
+    let callCount = 0;
+    const normalFolder = makeFolder({
+      contentCount: 1,
+      getNextChild: () => {
+        // 1回目はメッセージ、2回目はnull（終端）
+        if (callCount++ === 0) return fakeMsg;
+        return null;
+      },
+    });
+    const collected: PSTMessage[] = [];
+    collectMessages(normalFolder, (msg) => collected.push(msg));
+    expect(collected).toHaveLength(1);
+    expect(collected[0]).toBe(fakeMsg);
+  });
+
+  test('壊れたサブフォルダをスキップして正常なサブフォルダは処理する', () => {
+    const fakeMsg = Object.create(PSTMessage.prototype) as PSTMessage;
+    let callCount = 0;
+    const goodSubFolder = makeFolder({
+      contentCount: 1,
+      getNextChild: () => (callCount++ === 0 ? fakeMsg : null),
+    });
+    const brokenSubFolder = makeFolder({
+      displayName: 'Broken',
+      getSubFolders: () => { throw new Error('B-tree error'); },
+    });
+    const root = makeFolder({
+      getSubFolders: () => [brokenSubFolder, goodSubFolder],
+    });
+    const collected: PSTMessage[] = [];
+    expect(() => collectMessages(root, (msg) => collected.push(msg))).not.toThrow();
+    expect(collected).toHaveLength(1);
   });
 });

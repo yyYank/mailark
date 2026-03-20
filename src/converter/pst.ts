@@ -56,20 +56,33 @@ export function buildMboxEntry(message: PSTMessage): string {
 /**
  * PSTフォルダを再帰的にたどり、全メッセージを収集してmbox文字列を構築する
  */
-function collectMessages(
+export function collectMessages(
   folder: PSTFolder,
   onMessage: (msg: PSTMessage) => void
 ): void {
   if (folder.contentCount > 0) {
-    let msg = folder.getNextChild();
-    while (msg != null) {
-      if (msg instanceof PSTMessage) {
-        onMessage(msg);
+    try {
+      let msg = folder.getNextChild();
+      while (msg != null) {
+        if (msg instanceof PSTMessage) {
+          onMessage(msg);
+        }
+        msg = folder.getNextChild();
       }
-      msg = folder.getNextChild();
+    } catch (e) {
+      // B-treeエントリが欠損している壊れたフォルダはスキップ
+      console.warn(`PSTメッセージ取得をスキップ (folder: ${folder.displayName}):`, e);
     }
   }
-  for (const subFolder of folder.getSubFolders()) {
+  let subFolders: PSTFolder[];
+  try {
+    subFolders = folder.getSubFolders();
+  } catch (e) {
+    // 検索フォルダ等でB-treeが見つからない場合はサブフォルダごとスキップ
+    console.warn(`PSTサブフォルダ取得をスキップ (folder: ${folder.displayName}):`, e);
+    return;
+  }
+  for (const subFolder of subFolders) {
     collectMessages(subFolder, onMessage);
   }
 }

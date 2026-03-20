@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useMailbox } from './useMailbox';
 import Titlebar from './Titlebar';
 import SearchBar from './SearchBar';
 import EmailList from './EmailList';
 import EmailDetailPanel from './EmailDetail';
+import { applyTheme, getStoredTheme, nextTheme, saveTheme, ThemeMode } from './theme';
 
 export default function App() {
   const {
@@ -15,12 +17,23 @@ export default function App() {
     handleQueryChange, handleExcludeUnknownChange, handleSortToggle,
     selectEmail, handleLoadMore,
   } = useMailbox();
+  const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme(window.localStorage));
 
   const isListVisible = phase === 'no-selection' || phase === 'detail';
 
+  useEffect(() => {
+    applyTheme(theme, document.body);
+    saveTheme(theme, window.localStorage);
+  }, [theme]);
+
   return (
     <>
-      <Titlebar fileName={fileName} onOpenFile={openFile} />
+      <Titlebar
+        fileName={fileName}
+        onOpenFile={openFile}
+        theme={theme}
+        onToggleTheme={() => setTheme(prev => nextTheme(prev))}
+      />
       <SearchBar
         query={query}
         sortOrder={sortOrder}

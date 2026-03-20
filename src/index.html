@@ -22,6 +22,20 @@
     --radius: 8px;
   }
 
+  body[data-theme="light"] {
+    --bg: #f5f1e8;
+    --bg2: #ebe4d6;
+    --bg3: #e1d7c4;
+    --bg4: #d7ccb6;
+    --border: #c8baa1;
+    --accent: #0e7c66;
+    --accent2: #a33b2f;
+    --text: #261c14;
+    --text2: #5d4d40;
+    --text3: #887765;
+    --danger: #c74444;
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
@@ -82,6 +96,23 @@
     letter-spacing: 0.02em;
   }
   #open-btn:hover { opacity: 0.85; }
+  #theme-btn {
+    -webkit-app-region: no-drag;
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border);
+    padding: 7px 12px;
+    border-radius: var(--radius);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  #theme-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--bg2);
+  }
 
   /* ── SEARCH BAR ── */
   #search-bar {
@@ -313,7 +344,7 @@
     flex: 1;
     border: none;
     width: 100%;
-    background: #fff;
+    background: var(--bg);
     min-height: 400px;
   }
 

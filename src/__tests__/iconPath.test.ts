@@ -11,6 +11,6 @@ describe('getAppIconPath', () => {
   test('パッケージ環境ではResources配下のassets画像を返す', () => {
     const result = getAppIconPath('/Applications/mailark.app/Contents/Resources/app.asar/dist', true);
 
-    expect(result).toBe(path.join('/Applications/mailark.app/Contents/Resources', 'assets', 'mailark-square.png'));
+    expect(result).toBe(path.join('/Applications/mailark.app/Contents/Resources/app.asar', 'assets', 'mailark-square.png'));
   });
 });

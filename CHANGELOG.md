@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.11](https://github.com/yyYank/mailark/compare/v0.0.10...v0.0.11) - 2026-03-20
+- fix: Windows リリース bundle の exe 名を修正 by @yyYank in https://github.com/yyYank/mailark/pull/35
+
 ## [v0.0.10](https://github.com/yyYank/mailark/compare/v0.0.9...v0.0.10) - 2026-03-20
 - fix: macOS / Windows の配布用バイナリを zip にまとめる by @yyYank in https://github.com/yyYank/mailark/pull/33
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.9](https://github.com/yyYank/mailark/compare/v0.0.8...v0.0.9) - 2026-03-20
+- fix: macOS / Windows のリリース配布物を zip にまとめる by @yyYank in https://github.com/yyYank/mailark/pull/31
+
 ## [v0.0.8](https://github.com/yyYank/mailark/compare/v0.0.7...v0.0.8) - 2026-03-20
 - fix: include install scripts in release artifacts by @yyYank in https://github.com/yyYank/mailark/pull/29
 

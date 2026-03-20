@@ -32,6 +32,7 @@ Browse, search, and sort through mail archives and exported message data — wit
 - 📎 添付ファイルの確認・展開
 - 🌐 HTMLメールのサンドボックス表示
 - 🔣 RFC2047エンコードされた件名（日本語など）のデコード対応
+- 🌓 ダーク / ライトテーマの切り替え
 
 ---
 
@@ -72,7 +73,7 @@ npm start
 - [ ] EML形式の対応
 - [ ] 差出人・件名でのソート
 - [ ] メール単体のエクスポート
-- [ ] ダーク / ライトテーマの切り替え
+- [x] ダーク / ライトテーマの切り替え
 
 ---
 

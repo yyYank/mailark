@@ -1,5 +1,9 @@
 # mailark
 
+<p align="center">
+  <img src="./assets/mailark-thumbnail.png" alt="mailark thumbnail" width="360">
+</p>
+
 メールアーカイブ・メッセージダンプのデスクトップビューアー  
 A desktop viewer for email archives and message dumps.
 

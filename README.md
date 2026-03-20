@@ -12,6 +12,23 @@ Browse, search, and sort through mail archives and exported message data — wit
 
 ---
 
+## 画面イメージ
+
+<table>
+  <tr>
+    <td align="center">
+      <strong>pst/mbox ファイル参照</strong><br>
+      <img src="./assets/open.gif" alt="pst/mbox open demo" width="420">
+    </td>
+    <td align="center">
+      <strong>検索</strong><br>
+      <img src="./assets/from-search.gif" alt="search demo" width="420">
+    </td>
+  </tr>
+</table>
+
+
+
 ## 対応フォーマット / Supported Formats
 
 | フォーマット | 状態 |

@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.7](https://github.com/yyYank/mailark/compare/v0.0.6...v0.0.7) - 2026-03-20
+- fix: resolve packaged app icon path by @yyYank in https://github.com/yyYank/mailark/pull/25
+- feat: add dark and light theme toggle by @yyYank in https://github.com/yyYank/mailark/pull/24
+
 ## [v0.0.6](https://github.com/yyYank/mailark/compare/v0.0.5...v0.0.6) - 2026-03-20
 - fix: PST/mbox 表示品質の総合改善（クラッシュ・改行・HTMLビュー・デザイン） by @yyYank in https://github.com/yyYank/mailark/pull/23
 

@@ -51,11 +51,12 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           bundle_dir="release/mailark-${version}-mac-bundle"
           zip_path="release/mailark-${version}-mac-bundle.zip"
+          dmg_path="release/mailark-${version}-mac-universal.dmg"
 
           rm -rf "$bundle_dir" "$zip_path"
           mkdir -p "$bundle_dir"
           cp scripts/distribution/install-setup.sh "$bundle_dir/"
-          cp -R release/mac-universal "$bundle_dir/"
+          cp "$dmg_path" "$bundle_dir/"
 
           (
             cd release
@@ -97,6 +98,7 @@ jobs:
           $version = node -p "require('./package.json').version"
           $bundleDir = "release/mailark-$version-win-bundle"
           $zipPath = "release/mailark-$version-win-bundle.zip"
+          $exePath = "release/mailark-$version-windows-x64.exe"
 
           if (Test-Path $bundleDir) {
             Remove-Item $bundleDir -Recurse -Force
@@ -107,7 +109,7 @@ jobs:
 
           New-Item -ItemType Directory -Path $bundleDir | Out-Null
           Copy-Item scripts/distribution/install-setup.bat -Destination $bundleDir
-          Copy-Item release/win-unpacked -Destination (Join-Path $bundleDir "win-unpacked") -Recurse
+          Copy-Item $exePath -Destination $bundleDir
           Compress-Archive -Path $bundleDir -DestinationPath $zipPath
 
       - name: Upload Windows artifacts

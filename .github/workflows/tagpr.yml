@@ -45,6 +45,23 @@ jobs:
       - name: Build macOS release
         run: npm run build:mac
 
+      - name: Package macOS distribution bundle
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          bundle_dir="release/mailark-${version}-mac-bundle"
+          zip_path="release/mailark-${version}-mac-bundle.zip"
+
+          rm -rf "$bundle_dir" "$zip_path"
+          mkdir -p "$bundle_dir"
+          cp scripts/distribution/install-setup.sh "$bundle_dir/"
+          cp -R release/mac-universal "$bundle_dir/"
+
+          (
+            cd release
+            zip -qry "$(basename "$zip_path")" "$(basename "$bundle_dir")"
+          )
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -52,7 +69,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.dmg.blockmap
-            scripts/distribution/install-setup.sh
+            release/*-mac-bundle.zip
 
   build-win:
     runs-on: windows-latest
@@ -74,6 +91,25 @@ jobs:
       - name: Build Windows release
         run: npm run build:win
 
+      - name: Package Windows distribution bundle
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $bundleDir = "release/mailark-$version-win-bundle"
+          $zipPath = "release/mailark-$version-win-bundle.zip"
+
+          if (Test-Path $bundleDir) {
+            Remove-Item $bundleDir -Recurse -Force
+          }
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+
+          New-Item -ItemType Directory -Path $bundleDir | Out-Null
+          Copy-Item scripts/distribution/install-setup.bat -Destination $bundleDir
+          Copy-Item release/win-unpacked -Destination (Join-Path $bundleDir "win-unpacked") -Recurse
+          Compress-Archive -Path $bundleDir -DestinationPath $zipPath
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -81,7 +117,7 @@ jobs:
           path: |
             release/*.exe
             release/*.exe.blockmap
-            scripts/distribution/install-setup.bat
+            release/*-win-bundle.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -149,9 +185,9 @@ jobs:
           files: |
             release-artifacts/**/*.dmg
             release-artifacts/**/*.dmg.blockmap
-            release-artifacts/**/install-setup.sh
+            release-artifacts/**/*-mac-bundle.zip
             release-artifacts/**/*.exe
             release-artifacts/**/*.exe.blockmap
-            release-artifacts/**/install-setup.bat
+            release-artifacts/**/*-win-bundle.zip
             release-artifacts/**/*.AppImage
             release-artifacts/**/*.AppImage.blockmap

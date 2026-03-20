@@ -106,7 +106,7 @@ PRs welcome. Please open an issue first for large changes.
 社内配布や動作確認用には GitHub の Release ページから各 OS 向けバイナリをダウンロードしてください。
 
 - 未署名の実験的アプリのため、利用は自己責任でお願いします
-- macOS / Windows 向けにインストール補助スクリプトも同梱しています
+- macOS / Windows 向けには、`install-setup` スクリプトと展開済みアプリ本体をまとめた `zip` を添付しています
 - macOS では `install-setup.sh`、Windows では `install-setup.bat` を利用できます
 
 運用前に以下を設定してください。

@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.10](https://github.com/yyYank/mailark/compare/v0.0.9...v0.0.10) - 2026-03-20
+- fix: macOS / Windows の配布用バイナリを zip にまとめる by @yyYank in https://github.com/yyYank/mailark/pull/33
+
 ## [v0.0.9](https://github.com/yyYank/mailark/compare/v0.0.8...v0.0.9) - 2026-03-20
 - fix: macOS / Windows のリリース配布物を zip にまとめる by @yyYank in https://github.com/yyYank/mailark/pull/31
 

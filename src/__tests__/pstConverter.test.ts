@@ -231,6 +231,49 @@ describe('rtfToPlainText', () => {
   });
 });
 
+// ─── buildMboxEntry with attachments ─────────────────────────────────────────
+
+describe('buildMboxEntry (添付ファイルあり)', () => {
+  const baseMessage = {
+    transportMessageHeaders: '',
+    senderEmailAddress: 'sender@example.com',
+    clientSubmitTime: new Date('2022-06-15T09:00:00.000Z'),
+    subject: 'With Attachment',
+    body: 'See attachment',
+    bodyHTML: '',
+    displayTo: 'to@example.com',
+    bodyRTF: '',
+    numberOfAttachments: 0,
+    descriptorNodeId: { toNumber: () => 12345 },
+  };
+
+  test('descriptor IDがある場合はX-Mailark-Pst-Descヘッダーが含まれる', () => {
+    const result = buildMboxEntry(baseMessage as any);
+    expect(result).toContain('X-Mailark-Pst-Desc: 12345');
+  });
+
+  test('descriptor IDがない場合はX-Mailark-Pst-Descヘッダーが含まれない', () => {
+    const msg = { ...baseMessage, descriptorNodeId: undefined };
+    const result = buildMboxEntry(msg as any);
+    expect(result).not.toContain('X-Mailark-Pst-Desc');
+  });
+
+  test('mboxエントリに添付データは含まれない（軽量）', () => {
+    // 添付があってもmboxには含めない。X-Mailark-Pst-Descで追跡する
+    const msg = { ...baseMessage, numberOfAttachments: 3 };
+    const result = buildMboxEntry(msg as any);
+    expect(result).not.toContain('multipart/mixed');
+    expect(result).not.toContain('Content-Transfer-Encoding: base64');
+  });
+
+  test('parseEmailでX-Mailark-Pst-DescからpstDescriptorIdを取得できる', () => {
+    const raw = buildMboxEntry(baseMessage as any);
+    const parsed = parseEmail(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.pstDescriptorId).toBe(12345);
+  });
+});
+
 // ─── collectMessages ──────────────────────────────────────────────────────────
 
 describe('collectMessages', () => {

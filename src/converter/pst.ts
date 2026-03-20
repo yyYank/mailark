@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { PSTFile, PSTFolder, PSTMessage } from 'pst-extractor';
+import { PSTAttachment, PSTFile, PSTFolder, PSTMessage } from 'pst-extractor';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -67,7 +67,11 @@ export function buildMboxEntry(message: PSTMessage): string {
 
   const body = buildBodyContent(plainBody, htmlBody);
 
-  return `${fromLine}${headers}\n${body}\n\n`;
+  // 添付ファイルはmboxに含めずオンデマンド取得のためdescriptor IDだけ記録する
+  const descId = message.descriptorNodeId?.toNumber?.();
+  const pstDescHeader = descId != null ? `X-Mailark-Pst-Desc: ${descId}\n` : '';
+
+  return `${fromLine}${headers}${pstDescHeader}\n${body}\n\n`;
 }
 
 /**
@@ -190,6 +194,45 @@ function buildBodyContent(plainBody: string, htmlBody: string): string {
   return escapeMboxBody(plainBody || htmlBody);
 }
 
+/**
+ * PSTファイルから特定メッセージの添付ファイルをオンデマンドで読み込む。
+ * mboxには添付データを含めず、詳細取得時にdescriptor IDで直接アクセスする。
+ */
+export function readPstAttachments(
+  pstPath: string,
+  descriptorId: number
+): Array<{ filename: string; contentType: string; data: string; encoding: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Long = require('long') as typeof import('long');
+  const pstFile = new PSTFile(pstPath);
+  try {
+    const node = pstFile.getDescriptorIndexNode(Long.fromNumber(descriptorId));
+    const msg = new PSTMessage(pstFile, node);
+    const result: Array<{ filename: string; contentType: string; data: string; encoding: string }> = [];
+    for (let i = 0; i < msg.numberOfAttachments; i++) {
+      const att = msg.getAttachment(i);
+      if (!att) continue;
+      try {
+        const stream = att.fileInputStream;
+        if (!stream) continue;
+        const buf = Buffer.alloc(att.filesize);
+        stream.readCompletely(buf);
+        result.push({
+          filename: att.longFilename || att.filename || `attachment-${i}`,
+          contentType: att.mimeTag || 'application/octet-stream',
+          data: buf.toString('base64'),
+          encoding: 'base64',
+        });
+      } catch {
+        // 読み込み失敗した添付はスキップ
+      }
+    }
+    return result;
+  } finally {
+    pstFile.close();
+  }
+}
+
 function escapeMboxBody(body: string): string {
   return body.replace(/^From /gm, '>From ');
 }
@@ -254,9 +297,14 @@ export async function convertPstToMbox(
       const pstFile2 = new PSTFile(pstPath);
       const root2 = pstFile2.getRootFolder();
 
-      const chunks: string[] = [];
+      // chunks.join('')は大量添付時にInvalid string lengthになるため、1件ずつ書き込む
+      let writeError: Error | null = null;
       collectMessages(root2, (msg) => {
-        chunks.push(buildMboxEntry(msg));
+        if (!writeError) {
+          writeStream.write(buildMboxEntry(msg), (err) => {
+            if (err) writeError = err;
+          });
+        }
         processedCount++;
         if (onProgress && totalCount > 0) {
           const percent = Math.min(Math.floor(processedCount / totalCount * 100), 99);
@@ -264,14 +312,13 @@ export async function convertPstToMbox(
         }
       });
 
-      writeStream.write(chunks.join(''), (err) => {
-        if (err) { reject(err); return; }
-        writeStream.end(() => {
-          onProgress?.(100, processedCount);
-          pstFile.close();
-          pstFile2.close();
-          resolve(outPath);
-        });
+      writeStream.end((err: Error | null | undefined) => {
+        const finalErr = writeError || err;
+        if (finalErr) { reject(finalErr); return; }
+        onProgress?.(100, processedCount);
+        pstFile.close();
+        pstFile2.close();
+        resolve(outPath);
       });
     } catch (err) {
       writeStream.destroy();

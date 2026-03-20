@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.6](https://github.com/yyYank/mailark/compare/v0.0.5...v0.0.6) - 2026-03-20
+- fix: PST/mbox 表示品質の総合改善（クラッシュ・改行・HTMLビュー・デザイン） by @yyYank in https://github.com/yyYank/mailark/pull/23
+
 ## [v0.0.5](https://github.com/yyYank/mailark/compare/v0.0.4...v0.0.5) - 2026-03-19
 - #5 feat: advanced search query syntax (from:, to:, since:, until:) by @yyYank in https://github.com/yyYank/mailark/pull/18
 - test: add coverage for renderer and query utilities by @yyYank in https://github.com/yyYank/mailark/pull/20

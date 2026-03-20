@@ -83,6 +83,33 @@ describe('buildMboxEntry', () => {
     const result = buildMboxEntry(msg as any);
     expect(result).toContain('<p>HTML content</p>');
   });
+
+  test('bodyが空でhtmlBodyがある場合はContent-Typeがtext/htmlになる', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: '<p>HTML content</p>' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+  });
+
+  test('bodyがある場合はContent-Typeがtext/plainになる', () => {
+    const result = buildMboxEntry(baseMessage as any);
+    expect(result).toContain('Content-Type: text/plain; charset=utf-8');
+  });
+
+  test('transportMessageHeadersのmultipart Content-Typeをhtml本文に合わせて置き換える', () => {
+    const msg = {
+      ...baseMessage,
+      body: '',
+      bodyHTML: '<p>HTML</p>',
+      transportMessageHeaders:
+        'From: sender@example.com\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n\tboundary="xyz"\r\nContent-Transfer-Encoding: quoted-printable\r\n',
+    };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+    expect(result).not.toContain('multipart/alternative');
+    expect(result).not.toContain('Content-Transfer-Encoding');
+    expect(result).not.toContain('MIME-Version');
+    expect(result).toContain('<p>HTML</p>');
+  });
 });
 
 // ─── collectMessages ──────────────────────────────────────────────────────────

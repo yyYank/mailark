@@ -29,10 +29,25 @@ export function buildMboxEntry(message: PSTMessage): string {
   const dateStr = formatMboxDate(message.clientSubmitTime);
   const fromLine = `From ${from} ${dateStr}\n`;
 
+  // 使用する本文とContent-Typeを決定
+  // pst-extractorはMIMEをデコード済みでbody/bodyHTMLを提供するため、
+  // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
+  const hasPlainBody = !!(message.body && message.body.trim());
+  const hasHtmlBody = !!(message.bodyHTML && message.bodyHTML.trim());
+  const useHtml = !hasPlainBody && hasHtmlBody;
+  const rawBody = hasPlainBody ? message.body : (message.bodyHTML || '');
+  const contentType = useHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+
   let headers: string;
   if (message.transportMessageHeaders && message.transportMessageHeaders.trim()) {
-    headers = message.transportMessageHeaders.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    if (!headers.endsWith('\n')) headers += '\n';
+    // transportHeadersのContent-Type/Content-Transfer-Encoding/MIME-Versionを除去し
+    // 実際の本文に合わせたContent-Typeに置き換える
+    let raw = message.transportMessageHeaders.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    raw = raw.replace(/^Content-Type:[^\n]*(?:\n[ \t][^\n]*)*/gim, '');
+    raw = raw.replace(/^Content-Transfer-Encoding:[^\n]*(?:\n[ \t][^\n]*)*/gim, '');
+    raw = raw.replace(/^MIME-Version:[^\n]*/gim, '');
+    raw = raw.replace(/\n{2,}/g, '\n').trim();
+    headers = `${raw}\nContent-Type: ${contentType}\n`;
   } else {
     const date = message.clientSubmitTime
       ? message.clientSubmitTime.toUTCString()
@@ -42,11 +57,10 @@ export function buildMboxEntry(message: PSTMessage): string {
       `To: ${message.displayTo || ''}`,
       `Subject: ${message.subject || ''}`,
       `Date: ${date}`,
-      `Content-Type: text/plain; charset=utf-8`,
+      `Content-Type: ${contentType}`,
     ].join('\n') + '\n';
   }
 
-  const rawBody = message.body || message.bodyHTML || '';
   // mboxエスケープ: 本文中の行頭 "From " を ">From " に変換
   const body = rawBody.replace(/^From /gm, '>From ');
 

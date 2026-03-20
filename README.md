@@ -103,6 +103,12 @@ PRs welcome. Please open an issue first for large changes.
 
 `main` にマージされると `tagpr` がリリース PR とタグ作成を管理し、タグが作成されたときだけ同じ workflow 内で macOS / Windows / Linux 向けビルドと GitHub Release 作成を実行します。
 
+社内配布や動作確認用には GitHub の Release ページから各 OS 向けバイナリをダウンロードしてください。
+
+- 未署名の実験的アプリのため、利用は自己責任でお願いします
+- macOS / Windows 向けにインストール補助スクリプトも同梱しています
+- macOS では `install-setup.sh`、Windows では `install-setup.bat` を利用できます
+
 運用前に以下を設定してください。
 
 - `Settings > Actions > General` で `Allow GitHub Actions to create and approve pull requests` を有効化

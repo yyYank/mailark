@@ -19,13 +19,21 @@ export default function EmailDetail({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    if (!iframeRef.current || !currentDetail) return;
+    if (!iframeRef.current || !currentDetail || !currentMeta) return;
     if (viewMode === 'html') {
-      const html = currentDetail.htmlBody ||
-        `<pre style="font-family:monospace;padding:24px">${escHtml(currentDetail.body || '(本文なし)')}</pre>`;
+      const bodyContent = currentDetail.htmlBody ||
+        `<pre style="font-family:monospace;white-space:pre-wrap">${escHtml(currentDetail.body || '(本文なし)')}</pre>`;
+      const hr = `<hr style="border:none;border-top:1px solid #ccc;margin:8px 0">`;
+      const meta = `<div style="font-size:12px;color:#555;padding:2px 0">
+        ${escHtml(currentMeta.from)}　${escHtml(currentMeta.date)}
+      </div>`;
+      const html = `<html><body style="margin:16px;font-family:sans-serif">
+        ${hr}${meta}${hr}
+        ${bodyContent}
+      </body></html>`;
       iframeRef.current.srcdoc = html;
     }
-  }, [currentDetail, viewMode]);
+  }, [currentDetail, currentMeta, viewMode]);
 
   return (
     <div id="email-detail">

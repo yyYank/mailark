@@ -95,6 +95,18 @@ describe('buildMboxEntry', () => {
     expect(result).toContain('Content-Type: text/plain; charset=utf-8');
   });
 
+  test('bodyHTMLにHTMLタグがない場合はContent-Typeがtext/plainになる（改行保持のため）', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: 'プレーンテキスト\n改行あり' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/plain; charset=utf-8');
+  });
+
+  test('bodyHTMLにHTMLタグがない場合でも本文は保持される', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: 'プレーンテキスト\n改行あり' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('プレーンテキスト');
+  });
+
   test('transportMessageHeadersのmultipart Content-Typeをhtml本文に合わせて置き換える', () => {
     const msg = {
       ...baseMessage,

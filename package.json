@@ -1,7 +1,7 @@
 {
   "name": "mailark",
   "version": "1.0.0",
-  "description": "mbox file viewer for macOS",
+  "description": "mailark for macOS",
   "license": "Apache-2.0",
   "main": "dist/main.js",
   "scripts": {
@@ -35,7 +35,8 @@
     },
     "files": [
       "dist/**/*",
-      "src/index.html"
+      "src/index.html",
+      "assets/**/*"
     ],
     "mac": {
       "target": [

@@ -34,7 +34,10 @@ export function buildMboxEntry(message: PSTMessage): string {
   // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
   const hasPlainBody = !!(message.body && message.body.trim());
   const hasHtmlBody = !!(message.bodyHTML && message.bodyHTML.trim());
-  const useHtml = !hasPlainBody && hasHtmlBody;
+  // bodyHTMLにHTMLタグが含まれない場合はプレーンテキストとして扱う
+  // （HTMLタグなしで text/html にすると改行が失われるため）
+  const bodyHtmlHasTags = hasHtmlBody && /<[a-z]/i.test(message.bodyHTML!);
+  const useHtml = !hasPlainBody && bodyHtmlHasTags;
   const rawBody = hasPlainBody ? message.body : (message.bodyHTML || '');
   const contentType = useHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
 

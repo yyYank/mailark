@@ -5,6 +5,8 @@ import * as os from 'os';
 import { parseEmail, EmailMeta, Attachment, ByteRange } from './parser';
 import { parseSearchQuery } from './queryParser';
 import { convertPstToMbox } from './converter/pst';
+import { getAppIconPath } from './iconPath';
+import { applyAppMetadata } from './appMetadata';
 
 interface SearchParams {
   query?: string;
@@ -26,6 +28,12 @@ let emailMetaList: EmailMeta[] = [];
 let currentMboxPath = '';
 
 function createWindow(): void {
+  const icon = getAppIconPath(__dirname, app.isPackaged);
+
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(icon);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -33,6 +41,7 @@ function createWindow(): void {
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0f0f10',
+    icon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -43,7 +52,11 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
 }
 
-app.whenReady().then(createWindow);
+applyAppMetadata(app);
+
+app.whenReady().then(() => {
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

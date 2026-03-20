@@ -5,6 +5,13 @@ import { PSTFile, PSTFolder, PSTMessage } from 'pst-extractor';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BLOCK_TAG_RE = /<(html|body|div|p|table|ul|ol|li|h[1-6]|section|article|blockquote|pre|header|footer|main)\b/i;
+
+interface BodySelection {
+  plainBody: string;
+  htmlBody: string;
+  contentType: string;
+}
 
 /**
  * DateをmboxのFrom行用日付文字列に変換する
@@ -29,39 +36,10 @@ export function buildMboxEntry(message: PSTMessage): string {
   const dateStr = formatMboxDate(message.clientSubmitTime);
   const fromLine = `From ${from} ${dateStr}\n`;
 
-  // 使用する本文とContent-Typeを決定
-  // pst-extractorはMIMEをデコード済みでbody/bodyHTMLを提供するため、
-  // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
-  const hasPlainBody = !!(message.body && message.body.trim());
-  const hasHtmlBody = !!(message.bodyHTML && message.bodyHTML.trim());
-  // bodyHTMLの内容を3段階で分類する
-  //   ブロックタグあり  → 本格的なHTML → text/html としてそのまま使う
-  //   インラインタグのみ → \n が HTML 上で空白になるため <br> に変換してから text/html
-  //   タグなし          → text/plain として扱い <pre> で改行を保持する
-  const BLOCK_TAG_RE = /<(html|body|div|p|table|ul|ol|li|h[1-6]|section|article|blockquote|pre|header|footer|main)\b/i;
-  const hasBlockTags = hasHtmlBody && BLOCK_TAG_RE.test(message.bodyHTML!);
-  const hasAnyTag = hasHtmlBody && /<[a-z]/i.test(message.bodyHTML!);
-  const hasInlineTagsOnly = hasAnyTag && !hasBlockTags;
-
-  let rawBody: string;
-  let contentType: string;
-  if (hasPlainBody) {
-    rawBody = message.body;
-    contentType = 'text/plain; charset=utf-8';
-  } else if (hasBlockTags) {
-    rawBody = message.bodyHTML!;
-    contentType = 'text/html; charset=utf-8';
-  } else if (hasInlineTagsOnly) {
-    // \r\n / \r を \n に正規化してから <br> に変換
-    rawBody = message.bodyHTML!
-      .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-      .replace(/\n/g, '<br>\n');
-    contentType = 'text/html; charset=utf-8';
-  } else {
-    // タグなし → text/plain
-    rawBody = message.bodyHTML || '';
-    contentType = 'text/plain; charset=utf-8';
-  }
+  const { plainBody, htmlBody, contentType } = selectMessageBodies(message);
+  const mimeVersionHeader = contentType.startsWith('multipart/')
+    ? 'MIME-Version: 1.0\n'
+    : '';
 
   let headers: string;
   if (message.transportMessageHeaders && message.transportMessageHeaders.trim()) {
@@ -72,7 +50,7 @@ export function buildMboxEntry(message: PSTMessage): string {
     raw = raw.replace(/^Content-Transfer-Encoding:[^\n]*(?:\n[ \t][^\n]*)*/gim, '');
     raw = raw.replace(/^MIME-Version:[^\n]*/gim, '');
     raw = raw.replace(/\n{2,}/g, '\n').trim();
-    headers = `${raw}\nContent-Type: ${contentType}\n`;
+    headers = `${raw}\n${mimeVersionHeader}Content-Type: ${contentType}\n`;
   } else {
     const date = message.clientSubmitTime
       ? message.clientSubmitTime.toUTCString()
@@ -82,14 +60,87 @@ export function buildMboxEntry(message: PSTMessage): string {
       `To: ${message.displayTo || ''}`,
       `Subject: ${message.subject || ''}`,
       `Date: ${date}`,
+      ...(mimeVersionHeader ? [mimeVersionHeader.trimEnd()] : []),
       `Content-Type: ${contentType}`,
     ].join('\n') + '\n';
   }
 
-  // mboxエスケープ: 本文中の行頭 "From " を ">From " に変換
-  const body = rawBody.replace(/^From /gm, '>From ');
+  const body = buildBodyContent(plainBody, htmlBody);
 
   return `${fromLine}${headers}\n${body}\n\n`;
+}
+
+function selectMessageBodies(message: PSTMessage): BodySelection {
+  // pst-extractorはMIMEをデコード済みでbody/bodyHTMLを提供するため、
+  // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
+  const plainBody = message.body || '';
+  const hasPlainBody = !!plainBody.trim();
+  const rawHtmlBody = message.bodyHTML || '';
+  const hasHtmlBody = !!rawHtmlBody.trim();
+  const hasBlockTags = hasHtmlBody && BLOCK_TAG_RE.test(rawHtmlBody);
+  const hasAnyTag = hasHtmlBody && /<[a-z]/i.test(rawHtmlBody);
+  const hasInlineTagsOnly = hasAnyTag && !hasBlockTags;
+
+  let normalizedHtmlBody = '';
+  if (hasBlockTags) {
+    normalizedHtmlBody = rawHtmlBody;
+  } else if (hasInlineTagsOnly) {
+    normalizedHtmlBody = rawHtmlBody
+      .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      .replace(/\n/g, '<br>\n');
+  }
+
+  if (hasPlainBody && normalizedHtmlBody) {
+    return {
+      plainBody,
+      htmlBody: normalizedHtmlBody,
+      contentType: 'multipart/alternative; boundary="mailark-alt"',
+    };
+  }
+
+  if (hasPlainBody) {
+    return {
+      plainBody,
+      htmlBody: '',
+      contentType: 'text/plain; charset=utf-8',
+    };
+  }
+
+  if (normalizedHtmlBody) {
+    return {
+      plainBody: '',
+      htmlBody: normalizedHtmlBody,
+      contentType: 'text/html; charset=utf-8',
+    };
+  }
+
+  return {
+    plainBody: rawHtmlBody,
+    htmlBody: '',
+    contentType: 'text/plain; charset=utf-8',
+  };
+}
+
+function buildBodyContent(plainBody: string, htmlBody: string): string {
+  if (plainBody && htmlBody) {
+    return [
+      '--mailark-alt',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      escapeMboxBody(plainBody),
+      '--mailark-alt',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      escapeMboxBody(htmlBody),
+      '--mailark-alt--',
+    ].join('\n');
+  }
+
+  return escapeMboxBody(plainBody || htmlBody);
+}
+
+function escapeMboxBody(body: string): string {
+  return body.replace(/^From /gm, '>From ');
 }
 
 /**

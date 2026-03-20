@@ -1,4 +1,5 @@
 import { buildMboxEntry, formatMboxDate, collectMessages } from '../converter/pst';
+import { parseEmail } from '../parser';
 import { PSTFolder, PSTMessage } from 'pst-extractor';
 
 // ─── formatMboxDate ──────────────────────────────────────────────────────────
@@ -93,6 +94,36 @@ describe('buildMboxEntry', () => {
   test('bodyがある場合はContent-Typeがtext/plainになる', () => {
     const result = buildMboxEntry(baseMessage as any);
     expect(result).toContain('Content-Type: text/plain; charset=utf-8');
+  });
+
+  test('bodyとbodyHTMLが両方ある場合はmultipart/alternativeとして両方を保持する', () => {
+    const msg = {
+      ...baseMessage,
+      body: 'Plain fallback',
+      bodyHTML: '<p><a href="https://example.com">Open link</a></p>',
+    };
+
+    const result = buildMboxEntry(msg as any);
+
+    expect(result).toContain('Content-Type: multipart/alternative;');
+    expect(result).toContain('Content-Type: text/plain; charset=utf-8');
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+    expect(result).toContain('<a href="https://example.com">Open link</a>');
+  });
+
+  test('bodyとbodyHTMLが両方ある場合でもparseEmail後にhtmlリンクを復元できる', () => {
+    const msg = {
+      ...baseMessage,
+      body: 'Plain fallback',
+      bodyHTML: '<p><a href="https://example.com/path">Open link</a></p>',
+    };
+
+    const raw = buildMboxEntry(msg as any);
+    const parsed = parseEmail(raw);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.body).toContain('Plain fallback');
+    expect(parsed!.htmlBody).toContain('<a href="https://example.com/path">Open link</a>');
   });
 
   test('bodyHTMLにHTMLタグがない場合はContent-Typeがtext/plainになる（改行保持のため）', () => {

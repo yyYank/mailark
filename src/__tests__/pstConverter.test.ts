@@ -107,6 +107,34 @@ describe('buildMboxEntry', () => {
     expect(result).toContain('プレーンテキスト');
   });
 
+  test('bodyHTMLにブロックタグ(<p>)がある場合はtext/htmlになる', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: '<p>paragraph</p>' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+  });
+
+  test('bodyHTMLにインラインタグのみ(<br>)の場合はtext/htmlになる', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: '行1<br>行2<br>行3' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+  });
+
+  test('bodyHTMLにインラインタグ(<br>)と\\nが混在する場合、\\nを<br>に変換してtext/html', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: '行1<br>\n行2\n行3' };
+    const result = buildMboxEntry(msg as any);
+    expect(result).toContain('Content-Type: text/html; charset=utf-8');
+    // \n が <br> に変換される
+    expect(result.match(/<br>/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('bodyHTMLにインラインタグのみで\\r\\nの場合は\\nに正規化して<br>変換する', () => {
+    const msg = { ...baseMessage, body: '', bodyHTML: '行1\r\n行2\r\n行3' };
+    const result = buildMboxEntry(msg as any);
+    // タグなし → text/plain
+    expect(result).toContain('Content-Type: text/plain; charset=utf-8');
+    expect(result).toContain('行1');
+  });
+
   test('transportMessageHeadersのmultipart Content-Typeをhtml本文に合わせて置き換える', () => {
     const msg = {
       ...baseMessage,

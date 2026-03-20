@@ -34,12 +34,34 @@ export function buildMboxEntry(message: PSTMessage): string {
   // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
   const hasPlainBody = !!(message.body && message.body.trim());
   const hasHtmlBody = !!(message.bodyHTML && message.bodyHTML.trim());
-  // bodyHTMLにHTMLタグが含まれない場合はプレーンテキストとして扱う
-  // （HTMLタグなしで text/html にすると改行が失われるため）
-  const bodyHtmlHasTags = hasHtmlBody && /<[a-z]/i.test(message.bodyHTML!);
-  const useHtml = !hasPlainBody && bodyHtmlHasTags;
-  const rawBody = hasPlainBody ? message.body : (message.bodyHTML || '');
-  const contentType = useHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+  // bodyHTMLの内容を3段階で分類する
+  //   ブロックタグあり  → 本格的なHTML → text/html としてそのまま使う
+  //   インラインタグのみ → \n が HTML 上で空白になるため <br> に変換してから text/html
+  //   タグなし          → text/plain として扱い <pre> で改行を保持する
+  const BLOCK_TAG_RE = /<(html|body|div|p|table|ul|ol|li|h[1-6]|section|article|blockquote|pre|header|footer|main)\b/i;
+  const hasBlockTags = hasHtmlBody && BLOCK_TAG_RE.test(message.bodyHTML!);
+  const hasAnyTag = hasHtmlBody && /<[a-z]/i.test(message.bodyHTML!);
+  const hasInlineTagsOnly = hasAnyTag && !hasBlockTags;
+
+  let rawBody: string;
+  let contentType: string;
+  if (hasPlainBody) {
+    rawBody = message.body;
+    contentType = 'text/plain; charset=utf-8';
+  } else if (hasBlockTags) {
+    rawBody = message.bodyHTML!;
+    contentType = 'text/html; charset=utf-8';
+  } else if (hasInlineTagsOnly) {
+    // \r\n / \r を \n に正規化してから <br> に変換
+    rawBody = message.bodyHTML!
+      .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      .replace(/\n/g, '<br>\n');
+    contentType = 'text/html; charset=utf-8';
+  } else {
+    // タグなし → text/plain
+    rawBody = message.bodyHTML || '';
+    contentType = 'text/plain; charset=utf-8';
+  }
 
   let headers: string;
   if (message.transportMessageHeaders && message.transportMessageHeaders.trim()) {

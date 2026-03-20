@@ -3,6 +3,9 @@
 ## [v0.0.8](https://github.com/yyYank/mailark/compare/v0.0.7...v0.0.8) - 2026-03-20
 - fix: include install scripts in release artifacts by @yyYank in https://github.com/yyYank/mailark/pull/29
 
+## [v0.0.8](https://github.com/yyYank/mailark/compare/v0.0.7...v0.0.8) - 2026-03-20
+- fix: include install scripts in release artifacts by @yyYank in https://github.com/yyYank/mailark/pull/29
+
 ## [v0.0.7](https://github.com/yyYank/mailark/compare/v0.0.6...v0.0.7) - 2026-03-20
 - fix: resolve packaged app icon path by @yyYank in https://github.com/yyYank/mailark/pull/25
 - feat: add dark and light theme toggle by @yyYank in https://github.com/yyYank/mailark/pull/24

@@ -39,6 +39,7 @@
       "assets/**/*"
     ],
     "mac": {
+      "icon": "assets/mailark-square.png",
       "target": [
         {
           "target": "dmg",

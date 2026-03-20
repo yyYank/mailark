@@ -4,7 +4,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { parseEmail, EmailMeta, Attachment, ByteRange } from './parser';
 import { parseSearchQuery } from './queryParser';
-import { convertPstToMbox } from './converter/pst';
+import { convertPstToMbox, readPstAttachments } from './converter/pst';
+import { getAppIconPath } from './iconPath';
+import { applyAppMetadata } from './appMetadata';
 
 interface SearchParams {
   query?: string;
@@ -20,12 +22,22 @@ let mainWindow: BrowserWindow | null = null;
 const emailSearchCache = new Map<string, string>();
 // メールの byte 範囲。detail 取得時にファイルを再読み込みするために使う
 const emailRangeCache = new Map<string, ByteRange>();
+// PST由来メールのdescriptor ID。添付ファイルをオンデマンドで取得するために使う
+const pstDescriptorCache = new Map<string, number>();
 // メタデータリスト
 let emailMetaList: EmailMeta[] = [];
 // 現在開いているファイルパス（detail 再読み込み用）
 let currentMboxPath = '';
+// PSTファイルパス（PST由来添付のオンデマンド取得用）
+let currentPstPath = '';
 
 function createWindow(): void {
+  const icon = getAppIconPath(__dirname, app.isPackaged);
+
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(icon);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -33,6 +45,7 @@ function createWindow(): void {
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0f0f10',
+    icon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -43,7 +56,11 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
 }
 
-app.whenReady().then(createWindow);
+applyAppMetadata(app);
+
+app.whenReady().then(() => {
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -75,7 +92,9 @@ ipcMain.handle('read-mbox', async (_event, filePath: string) => {
   try {
     emailSearchCache.clear();
     emailRangeCache.clear();
+    pstDescriptorCache.clear();
     emailMetaList = [];
+    currentPstPath = '';
 
     let mboxPath = filePath;
     if (filePath.toLowerCase().endsWith('.pst')) {
@@ -83,6 +102,7 @@ ipcMain.handle('read-mbox', async (_event, filePath: string) => {
       mboxPath = await convertPstToMbox(filePath, (percent, count) => {
         mainWindow?.webContents.send('load-progress', { percent: Math.floor(percent / 2), count, phase: 'converting' });
       });
+      currentPstPath = filePath;
     }
 
     currentMboxPath = mboxPath;
@@ -109,9 +129,20 @@ ipcMain.handle('get-email-detail', async (_event, id: string) => {
         try {
           const raw = Buffer.concat(chunks).toString('utf-8');
           const email = parseEmail(raw);
-          resolve(email
-            ? { body: email.body, htmlBody: email.htmlBody, attachments: email.attachments }
-            : { body: '', htmlBody: '', attachments: [] });
+          if (!email) { resolve({ body: '', htmlBody: '', attachments: [] }); return; }
+
+          // PST由来メールは添付をmboxから読まずPSTから直接取得する
+          let attachments: Attachment[] = email.attachments;
+          const descId = pstDescriptorCache.get(id);
+          if (currentPstPath && descId != null) {
+            try {
+              attachments = readPstAttachments(currentPstPath, descId);
+            } catch {
+              // PST読み込み失敗時はmbox由来の添付（空）のまま
+            }
+          }
+
+          resolve({ body: email.body, htmlBody: email.htmlBody, attachments });
         } catch {
           resolve({ body: '', htmlBody: '', attachments: [] });
         }
@@ -196,6 +227,9 @@ function parseMboxStream(filePath: string): Promise<EmailMeta[]> {
         }
         emailSearchCache.set(email.id, searchText.slice(0, 500).toLowerCase());
         emailRangeCache.set(email.id, { byteStart, byteEnd });
+        if (email.pstDescriptorId != null) {
+          pstDescriptorCache.set(email.id, email.pstDescriptorId);
+        }
 
         emails.push({
           id: email.id,

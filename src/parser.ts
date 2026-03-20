@@ -26,6 +26,7 @@ export interface Email {
   htmlBody: string;
   attachments: Attachment[];
   raw: string;
+  pstDescriptorId?: number;
 }
 
 export interface ByteRange {
@@ -60,6 +61,9 @@ export function parseEmail(raw: string): Email | null {
   const contentType = headers['content-type'] || 'text/plain';
   const { body, attachments, htmlBody } = parseMimePart(contentType, headers['content-transfer-encoding'] || '', bodyRaw, raw);
 
+  const pstDescStr = headers['x-mailark-pst-desc'];
+  const pstDescriptorId = pstDescStr ? parseInt(pstDescStr, 10) : undefined;
+
   return {
     id: Math.random().toString(36).substr(2, 9),
     from: headers['from'] || '(不明)',
@@ -71,6 +75,7 @@ export function parseEmail(raw: string): Email | null {
     htmlBody: htmlBody || '',
     attachments,
     raw: raw.substring(0, 200),
+    ...(pstDescriptorId != null ? { pstDescriptorId } : {}),
   };
 }
 

@@ -6,10 +6,10 @@ interface Props {
 export default function Titlebar({ fileName, onOpenFile }: Props) {
   return (
     <div id="titlebar">
-      <span className="app-name">MBOX//</span>
+      <span className="app-name">mailark</span>
       <span className="file-name">{fileName}</span>
       <div className="spacer"></div>
-      <button id="open-btn" onClick={onOpenFile}>📂 mboxを開く</button>
+      <button id="open-btn" onClick={onOpenFile}>📂 ファイルを開く</button>
     </div>
   );
 }

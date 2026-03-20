@@ -20,7 +20,7 @@ export default function EmailList({
     <div id="email-list">
       {!isVisible && (
         <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
-          mboxファイルを開いてください
+          mailark でファイルを開いてください
         </div>
       )}
       {isVisible && totalMatched === 0 && (

@@ -98,7 +98,7 @@ jobs:
           $version = node -p "require('./package.json').version"
           $bundleDir = "release/mailark-$version-win-bundle"
           $zipPath = "release/mailark-$version-win-bundle.zip"
-          $exePath = "release/mailark-$version-windows-x64.exe"
+          $exePath = "release/mailark-$version-win-x64.exe"
 
           if (Test-Path $bundleDir) {
             Remove-Item $bundleDir -Recurse -Force

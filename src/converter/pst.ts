@@ -70,10 +70,61 @@ export function buildMboxEntry(message: PSTMessage): string {
   return `${fromLine}${headers}\n${body}\n\n`;
 }
 
+/**
+ * RTF文字列をプレーンテキストに変換する（改行保持を主目的とした最小実装）。
+ * pst-extractorが \par / \line を改行に変換できなかった場合のフォールバック。
+ *
+ * 処理順序:
+ *   1. \par / \line → \n（段落・ソフト改行）
+ *   2. \'xx → Latin-1文字（RTFのバイト列エスケープ）
+ *   3. \uN? → Unicode文字
+ *   4. 残りのRTFコントロールワード / シンボルを削除
+ *   5. グループ区切り {} を削除
+ */
+export function rtfToPlainText(rtf: string): string {
+  if (!rtf) return '';
+  let t = rtf;
+  // \par / \line を改行に（末尾の任意の空白も消費）
+  t = t.replace(/\\par\b[ \t]*/g, '\n');
+  t = t.replace(/\\line\b[ \t]*/g, '\n');
+  t = t.replace(/\\tab\b[ \t]*/g, '\t');
+  // \'xx → 文字（Windows-1252 / Latin-1 範囲を想定）
+  t = t.replace(/\\'([0-9a-fA-F]{2})/g, (_, h) =>
+    String.fromCharCode(parseInt(h, 16))
+  );
+  // \uN? → Unicode（負数は+65536して扱う）
+  t = t.replace(/\\u(-?\d+)\??/g, (_, c) => {
+    const n = parseInt(c);
+    try { return String.fromCodePoint(n < 0 ? n + 65536 : n); } catch { return ''; }
+  });
+  // エスケープされたリテラル文字 \\ \{ \} を変換
+  t = t.replace(/\\([\\{}])/g, '$1');
+  // 残りのRTFコントロールワード（\word / \word-123 / \word123 など）
+  t = t.replace(/\\[a-z][a-z0-9]*-?\d*[ \t]?/gi, '');
+  // 残りのRTFコントロールシンボル
+  t = t.replace(/\\[^a-z\s]/gi, '');
+  // グループ区切り文字
+  t = t.replace(/[{}]/g, '');
+  // 行内の連続空白を単一スペースに（改行は保持）
+  t = t.replace(/[ \t]+/g, ' ');
+  // 4つ以上の連続改行を2つに圧縮
+  t = t.replace(/\n{4,}/g, '\n\n');
+  return t.trim();
+}
+
 function selectMessageBodies(message: PSTMessage): BodySelection {
   // pst-extractorはMIMEをデコード済みでbody/bodyHTMLを提供するため、
   // 元のmultipart Content-Typeを持ち込まず実際の内容に合わせて設定し直す
-  const plainBody = message.body || '';
+
+  // body（PR_BODY）に改行がない場合は bodyRTF からフォールバック変換する。
+  // pst-extractorのRTF→テキスト変換が \par を改行に変換できないケースへの対処。
+  let plainBody = message.body || '';
+  if (plainBody && !plainBody.includes('\n') && message.bodyRTF) {
+    const fromRtf = rtfToPlainText(message.bodyRTF);
+    if (fromRtf.includes('\n')) plainBody = fromRtf;
+  } else if (!plainBody && message.bodyRTF) {
+    plainBody = rtfToPlainText(message.bodyRTF);
+  }
   const hasPlainBody = !!plainBody.trim();
   const rawHtmlBody = message.bodyHTML || '';
   const hasHtmlBody = !!rawHtmlBody.trim();

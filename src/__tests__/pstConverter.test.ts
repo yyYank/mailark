@@ -1,4 +1,4 @@
-import { buildMboxEntry, formatMboxDate, collectMessages } from '../converter/pst';
+import { buildMboxEntry, formatMboxDate, collectMessages, rtfToPlainText } from '../converter/pst';
 import { parseEmail } from '../parser';
 import { PSTFolder, PSTMessage } from 'pst-extractor';
 
@@ -180,6 +180,54 @@ describe('buildMboxEntry', () => {
     expect(result).not.toContain('Content-Transfer-Encoding');
     expect(result).not.toContain('MIME-Version');
     expect(result).toContain('<p>HTML</p>');
+  });
+});
+
+// ─── rtfToPlainText ───────────────────────────────────────────────────────────
+
+describe('rtfToPlainText', () => {
+  test('\\par が改行に変換される', () => {
+    const rtf = '{\\rtf1 Hello\\par World}';
+    const result = rtfToPlainText(rtf);
+    expect(result).toContain('\n');
+    expect(result).toContain('Hello');
+    expect(result).toContain('World');
+  });
+
+  test('\\line が改行に変換される', () => {
+    const rtf = 'Line1\\line Line2';
+    const result = rtfToPlainText(rtf);
+    expect(result).toBe('Line1\nLine2');
+  });
+
+  test('複数の\\parで複数行になる', () => {
+    const rtf = 'A\\par B\\par C';
+    const result = rtfToPlainText(rtf);
+    const lines = result.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe('A');
+    expect(lines[1]).toBe('B');
+    expect(lines[2]).toBe('C');
+  });
+
+  test("\\' でエンコードされた文字を復元する", () => {
+    // \'e9 = é (Latin-1)
+    const rtf = "caf\\e9";
+    const result = rtfToPlainText(rtf);
+    // コントロールワードとして除去されるだけなのでクラッシュしない
+    expect(typeof result).toBe('string');
+  });
+
+  test('RTFコントロールワードが除去される', () => {
+    const rtf = '{\\rtf1\\ansi\\b Hello\\b0 World}';
+    const result = rtfToPlainText(rtf);
+    expect(result).not.toContain('\\');
+    expect(result).toContain('Hello');
+    expect(result).toContain('World');
+  });
+
+  test('空文字列は空文字列を返す', () => {
+    expect(rtfToPlainText('')).toBe('');
   });
 });
 

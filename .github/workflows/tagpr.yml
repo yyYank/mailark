@@ -52,6 +52,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.dmg.blockmap
+            scripts/distribution/install-setup.sh
 
   build-win:
     runs-on: windows-latest
@@ -80,6 +81,7 @@ jobs:
           path: |
             release/*.exe
             release/*.exe.blockmap
+            scripts/distribution/install-setup.bat
 
   build-linux:
     runs-on: ubuntu-latest
@@ -147,7 +149,9 @@ jobs:
           files: |
             release-artifacts/**/*.dmg
             release-artifacts/**/*.dmg.blockmap
+            release-artifacts/**/install-setup.sh
             release-artifacts/**/*.exe
             release-artifacts/**/*.exe.blockmap
+            release-artifacts/**/install-setup.bat
             release-artifacts/**/*.AppImage
             release-artifacts/**/*.AppImage.blockmap

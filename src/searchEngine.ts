@@ -15,6 +15,10 @@ export interface SearchResult {
 
 export type SearchTokenizer = (text: string) => Promise<string[]>;
 
+export interface SearchRunner {
+  search(query: string): Promise<SearchResult[]>;
+}
+
 interface IndexedSearchDocument {
   id: string;
   from: string;
@@ -29,7 +33,7 @@ interface IndexedSearchDocument {
 
 const INDEX_FIELDS = ['fromTerms', 'toTerms', 'subjectTerms', 'bodyTerms'] as const;
 
-export class SearchIndex {
+export class SearchIndex implements SearchRunner {
   constructor(
     private readonly miniSearch: MiniSearch<IndexedSearchDocument>,
     private readonly tokenizer: SearchTokenizer,

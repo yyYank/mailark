@@ -7,8 +7,8 @@ import { parseSearchQuery } from './queryParser';
 import { convertPstToMbox, readPstAttachments } from './converter/pst';
 import { getAppIconPath } from './iconPath';
 import { applyAppMetadata } from './appMetadata';
-import { buildSearchIndex, SearchDocument, SearchIndex } from './searchEngine';
 import { tokenizeJapaneseText } from './searchTokenizer';
+import { createLazySearchIndex } from './lazySearchIndex';
 
 interface SearchParams {
   query?: string;
@@ -20,7 +20,6 @@ interface SearchParams {
 
 let mainWindow: BrowserWindow | null = null;
 
-const emailSearchDocuments: SearchDocument[] = [];
 // メールの byte 範囲。detail 取得時にファイルを再読み込みするために使う
 const emailRangeCache = new Map<string, ByteRange>();
 // PST由来メールのdescriptor ID。添付ファイルをオンデマンドで取得するために使う
@@ -31,7 +30,9 @@ let emailMetaList: EmailMeta[] = [];
 const emailMboxPathCache = new Map<string, string>();
 // メールIDごとのPSTファイルパス（PST由来添付のオンデマンド取得用）
 const emailPstPathCache = new Map<string, string>();
-let emailSearchIndex: SearchIndex | null = null;
+const emailSearchIndex = createLazySearchIndex({
+  tokenizer: tokenizeJapaneseText,
+});
 
 function createWindow(): void {
   const icon = getAppIconPath(__dirname, app.isPackaged);
@@ -92,13 +93,12 @@ ipcMain.handle('open-mbox-file', async () => {
 // 複数ファイルをマージして読み込む。全件はrendererに転送しない。件数だけ返す
 ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
   try {
-    emailSearchDocuments.length = 0;
     emailRangeCache.clear();
     pstDescriptorCache.clear();
     emailMboxPathCache.clear();
     emailPstPathCache.clear();
     emailMetaList = [];
-    emailSearchIndex = null;
+    emailSearchIndex.reset();
 
     for (let i = 0; i < filePaths.length; i++) {
       const filePath = filePaths[i];
@@ -122,9 +122,6 @@ ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
       const newEmails = await parseMboxStream(mboxPath, pstPath);
       emailMetaList = emailMetaList.concat(newEmails);
     }
-
-    emailSearchIndex = await buildSearchIndex(emailSearchDocuments, tokenizeJapaneseText);
-
     return { total: emailMetaList.length };
   } catch (err) {
     return { error: (err as Error).message };
@@ -191,7 +188,7 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
     });
 
     if (parsed.text) {
-      const searchResults = emailSearchIndex ? await emailSearchIndex.search(parsed.text) : [];
+      const searchResults = await emailSearchIndex.search(parsed.text);
       scoredSearchResults = new Map(searchResults.map(result => [result.id, result.score]));
       results = results.filter(em => scoredSearchResults.has(em.id));
     }
@@ -250,7 +247,7 @@ function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
         const email = parseEmail(raw);
         if (!email) return;
 
-        emailSearchDocuments.push({
+        emailSearchIndex.add({
           id: email.id,
           from: email.from,
           to: email.to,

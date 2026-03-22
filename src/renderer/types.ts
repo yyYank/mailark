@@ -1,3 +1,5 @@
+import { SearchStatus } from '../searchStatus';
+
 export interface EmailMeta {
   id: string;
   from: string;
@@ -28,6 +30,7 @@ declare global {
     api: {
       openMboxFile: () => Promise<string[] | null>;
       readMbox: (filePaths: string[]) => Promise<{ total?: number; error?: string }>;
+      getSearchStatus: () => Promise<SearchStatus>;
       getEmailDetail: (id: string) => Promise<EmailDetail>;
       searchEmails: (params: {
         query: string;
@@ -39,6 +42,8 @@ declare global {
       saveAttachment: (data: { filename: string; data: string }) => Promise<string>;
       onLoadProgress: (cb: (data: { percent: number; count: number }) => void) => void;
       offLoadProgress: () => void;
+      onSearchStatus: (cb: (data: SearchStatus) => void) => void;
+      offSearchStatus: () => void;
     };
   }
 }

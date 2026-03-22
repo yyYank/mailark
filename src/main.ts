@@ -7,8 +7,10 @@ import { parseSearchQuery } from './queryParser';
 import { convertPstToMbox, readPstAttachments } from './converter/pst';
 import { getAppIconPath } from './iconPath';
 import { applyAppMetadata } from './appMetadata';
-import { tokenizeJapaneseText } from './searchTokenizer';
-import { createLazySearchIndex } from './lazySearchIndex';
+import { createBackgroundSearchIndex } from './backgroundSearchIndex';
+import { SearchDocument } from './searchEngine';
+import { SearchStatus } from './searchStatus';
+import { extractSearchableBody } from './searchableBody';
 
 interface SearchParams {
   query?: string;
@@ -30,8 +32,13 @@ let emailMetaList: EmailMeta[] = [];
 const emailMboxPathCache = new Map<string, string>();
 // メールIDごとのPSTファイルパス（PST由来添付のオンデマンド取得用）
 const emailPstPathCache = new Map<string, string>();
-const emailSearchIndex = createLazySearchIndex({
-  tokenizer: tokenizeJapaneseText,
+const emailSearchDocuments: SearchDocument[] = [];
+let latestSearchStatus: SearchStatus = { phase: 'idle' };
+const emailSearchIndex = createBackgroundSearchIndex({
+  onStatusChange: status => {
+    latestSearchStatus = status;
+    mainWindow?.webContents.send('search-status', status);
+  },
 });
 
 function createWindow(): void {
@@ -89,6 +96,8 @@ ipcMain.handle('open-mbox-file', async () => {
   return result.filePaths;
 });
 
+ipcMain.handle('get-search-status', async () => latestSearchStatus);
+
 // Read and parse mbox files (PSTの場合は先にmboxへ変換する)
 // 複数ファイルをマージして読み込む。全件はrendererに転送しない。件数だけ返す
 ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
@@ -98,7 +107,9 @@ ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
     emailMboxPathCache.clear();
     emailPstPathCache.clear();
     emailMetaList = [];
+    emailSearchDocuments.length = 0;
     emailSearchIndex.reset();
+    latestSearchStatus = { phase: 'idle' };
 
     for (let i = 0; i < filePaths.length; i++) {
       const filePath = filePaths[i];
@@ -122,6 +133,7 @@ ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
       const newEmails = await parseMboxStream(mboxPath, pstPath);
       emailMetaList = emailMetaList.concat(newEmails);
     }
+    emailSearchIndex.replaceAll(emailSearchDocuments);
     return { total: emailMetaList.length };
   } catch (err) {
     return { error: (err as Error).message };
@@ -249,7 +261,7 @@ function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
         const email = parseEmail(raw);
         if (!email) return;
 
-        emailSearchIndex.add({
+        emailSearchDocuments.push({
           id: email.id,
           from: email.from,
           to: email.to,
@@ -330,18 +342,4 @@ function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
 
     fileStream.on('error', reject);
   });
-}
-
-// NOTE: style/script タグ内のノイズを先に除去してからタグを削除する。
-// ただし正規表現ベースのため、ネストしたコメントや非標準タグには対応できない。
-// 将来的に軽量HTMLパーサー（node-html-parser 等）への移行を検討すること。
-function extractSearchableBody(body: string, htmlBody: string): string {
-  if (body.trim()) return body;
-
-  return htmlBody
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }

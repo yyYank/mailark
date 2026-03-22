@@ -10,11 +10,13 @@ export default function App() {
   const {
     phase, fileName, loadProgress,
     displayedEmails, totalMatched, totalCount,
+    searchStatus,
     query, sortOrder, excludeUnknown,
     selectedIndex, currentMeta, currentDetail,
     viewMode, setViewMode,
     openFile,
-    handleQueryChange, handleExcludeUnknownChange, handleSortToggle,
+    handleQueryChange, handleQueryKeyDown, handleQueryCompositionStart, handleQueryCompositionEnd,
+    handleExcludeUnknownChange, handleSortToggle,
     selectEmail, handleLoadMore,
   } = useMailbox();
   const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme(window.localStorage));
@@ -41,7 +43,11 @@ export default function App() {
         disabled={!isListVisible}
         totalMatched={totalMatched}
         totalCount={totalCount}
+        searchStatus={searchStatus}
         onQueryChange={handleQueryChange}
+        onQueryKeyDown={handleQueryKeyDown}
+        onQueryCompositionStart={handleQueryCompositionStart}
+        onQueryCompositionEnd={handleQueryCompositionEnd}
         onExcludeUnknownChange={handleExcludeUnknownChange}
         onSortToggle={handleSortToggle}
       />
@@ -51,6 +57,7 @@ export default function App() {
           selectedIndex={selectedIndex}
           totalMatched={totalMatched}
           query={query}
+          searchStatus={searchStatus}
           isVisible={isListVisible}
           hasMore={displayedEmails.length < totalMatched}
           onSelect={selectEmail}

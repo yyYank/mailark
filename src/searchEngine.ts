@@ -15,6 +15,10 @@ export interface SearchResult {
 
 export type SearchTokenizer = (text: string) => Promise<string[]>;
 
+interface BuildSearchIndexOptions {
+  onProgress?: (indexed: number, total: number) => void;
+}
+
 export interface SearchRunner {
   search(query: string): Promise<SearchResult[]>;
 }
@@ -67,6 +71,7 @@ const TOKENIZE_CHUNK_SIZE = 100;
 export async function buildSearchIndex(
   docs: SearchDocument[],
   tokenizer: SearchTokenizer,
+  options: BuildSearchIndexOptions = {},
 ): Promise<SearchIndex> {
   const miniSearch = new MiniSearch<IndexedSearchDocument>({
     fields: [...INDEX_FIELDS],
@@ -75,15 +80,23 @@ export async function buildSearchIndex(
     processTerm: term => term,
   });
 
+  options.onProgress?.(0, docs.length);
+
   for (let i = 0; i < docs.length; i += TOKENIZE_CHUNK_SIZE) {
     const chunk = docs.slice(i, i + TOKENIZE_CHUNK_SIZE);
-    const indexedChunk = await Promise.all(chunk.map(async doc => ({
-      ...doc,
-      fromTerms: (await tokenizer(doc.from)).join(' '),
-      toTerms: (await tokenizer(doc.to)).join(' '),
-      subjectTerms: (await tokenizer(doc.subject)).join(' '),
-      bodyTerms: (await tokenizer(doc.body)).join(' '),
-    })));
+    const indexedChunk: IndexedSearchDocument[] = [];
+
+    for (const [chunkIndex, doc] of chunk.entries()) {
+      indexedChunk.push({
+        ...doc,
+        fromTerms: (await tokenizer(doc.from)).join(' '),
+        toTerms: (await tokenizer(doc.to)).join(' '),
+        subjectTerms: (await tokenizer(doc.subject)).join(' '),
+        bodyTerms: (await tokenizer(doc.body)).join(' '),
+      });
+      options.onProgress?.(Math.min(i + chunkIndex + 1, docs.length), docs.length);
+    }
+
     miniSearch.addAll(indexedChunk);
   }
 

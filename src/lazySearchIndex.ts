@@ -19,12 +19,15 @@ export function createLazySearchIndex({
   const docs: SearchDocument[] = [];
   let index: SearchRunner | null = null;
   let buildPromise: Promise<SearchRunner> | null = null;
+  // reset() が呼ばれるたびにインクリメントし、古い buildPromise の結果を破棄する
+  let generation = 0;
 
   return {
     add(doc: SearchDocument) {
       docs.push(doc);
     },
     reset() {
+      generation++;
       docs.length = 0;
       index = null;
       buildPromise = null;
@@ -40,12 +43,18 @@ export function createLazySearchIndex({
 
   async function ensureIndex(): Promise<SearchRunner> {
     if (index) return index;
+    const currentGeneration = generation;
     if (!buildPromise) {
       buildPromise = buildIndex([...docs], tokenizer).then(createdIndex => {
-        index = createdIndex;
+        // reset() が呼ばれた場合（世代が変わった場合）は古いインデックスを捨てる
+        if (generation === currentGeneration) {
+          index = createdIndex;
+        }
         return createdIndex;
       }).finally(() => {
-        buildPromise = null;
+        if (generation === currentGeneration) {
+          buildPromise = null;
+        }
       });
     }
     return buildPromise;

@@ -179,6 +179,7 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
 
   if (query) {
     const parsed = parseSearchQuery(query);
+    // ① 構造フィルタ（from/to/since/until）で候補を絞る
     results = results.filter(em => {
       if (parsed.from && !em.from.toLowerCase().includes(parsed.from.toLowerCase())) return false;
       if (parsed.to && !em.to.toLowerCase().includes(parsed.to.toLowerCase())) return false;
@@ -187,6 +188,7 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
       return true;
     });
 
+    // ② 全文検索インデックスでさらに絞り込み、スコアを取得
     if (parsed.text) {
       const searchResults = await emailSearchIndex.search(parsed.text);
       scoredSearchResults = new Map(searchResults.map(result => [result.id, result.score]));
@@ -330,6 +332,9 @@ function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
   });
 }
 
+// NOTE: style/script タグ内のノイズを先に除去してからタグを削除する。
+// ただし正規表現ベースのため、ネストしたコメントや非標準タグには対応できない。
+// 将来的に軽量HTMLパーサー（node-html-parser 等）への移行を検討すること。
 function extractSearchableBody(body: string, htmlBody: string): string {
   if (body.trim()) return body;
 

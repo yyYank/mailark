@@ -61,6 +61,9 @@ export class SearchIndex implements SearchRunner {
   }
 }
 
+// 一度に処理するドキュメント数。全件並列だとメモリ/CPUを大量消費するためチャンク分割する
+const TOKENIZE_CHUNK_SIZE = 100;
+
 export async function buildSearchIndex(
   docs: SearchDocument[],
   tokenizer: SearchTokenizer,
@@ -72,14 +75,17 @@ export async function buildSearchIndex(
     processTerm: term => term,
   });
 
-  const indexedDocs = await Promise.all(docs.map(async doc => ({
-    ...doc,
-    fromTerms: (await tokenizer(doc.from)).join(' '),
-    toTerms: (await tokenizer(doc.to)).join(' '),
-    subjectTerms: (await tokenizer(doc.subject)).join(' '),
-    bodyTerms: (await tokenizer(doc.body)).join(' '),
-  })));
+  for (let i = 0; i < docs.length; i += TOKENIZE_CHUNK_SIZE) {
+    const chunk = docs.slice(i, i + TOKENIZE_CHUNK_SIZE);
+    const indexedChunk = await Promise.all(chunk.map(async doc => ({
+      ...doc,
+      fromTerms: (await tokenizer(doc.from)).join(' '),
+      toTerms: (await tokenizer(doc.to)).join(' '),
+      subjectTerms: (await tokenizer(doc.subject)).join(' '),
+      bodyTerms: (await tokenizer(doc.body)).join(' '),
+    })));
+    miniSearch.addAll(indexedChunk);
+  }
 
-  miniSearch.addAll(indexedDocs);
   return new SearchIndex(miniSearch, tokenizer);
 }

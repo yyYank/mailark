@@ -9,7 +9,9 @@ export async function tokenizeJapaneseText(text: string): Promise<string[]> {
   try {
     const tokens = await tokenize(normalized);
     return flattenKuromojiTokens(tokens);
-  } catch {
+  } catch (err) {
+    // kuromoji の辞書ロード失敗などはサイレントに埋もれないようログに残す
+    console.error('[searchTokenizer] kuromoji tokenize failed, falling back to space split:', err);
     return normalized.split(' ').filter(Boolean);
   }
 }

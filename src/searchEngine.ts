@@ -1,4 +1,5 @@
 import MiniSearch from 'minisearch';
+import { normalizeSearchText } from './searchTokenizer';
 
 export interface SearchDocument {
   id: string;
@@ -81,6 +82,7 @@ export async function buildSearchIndex(
   });
 
   options.onProgress?.(0, docs.length);
+  const tokenCache = new Map<string, Promise<string[]>>();
 
   for (let i = 0; i < docs.length; i += TOKENIZE_CHUNK_SIZE) {
     const chunk = docs.slice(i, i + TOKENIZE_CHUNK_SIZE);
@@ -89,10 +91,10 @@ export async function buildSearchIndex(
     for (const [chunkIndex, doc] of chunk.entries()) {
       indexedChunk.push({
         ...doc,
-        fromTerms: (await tokenizer(doc.from)).join(' '),
-        toTerms: (await tokenizer(doc.to)).join(' '),
-        subjectTerms: (await tokenizer(doc.subject)).join(' '),
-        bodyTerms: (await tokenizer(doc.body)).join(' '),
+        fromTerms: tokenizeAddressField(doc.from).join(' '),
+        toTerms: tokenizeAddressField(doc.to).join(' '),
+        subjectTerms: (await cachedTokenize(doc.subject, tokenizer, tokenCache)).join(' '),
+        bodyTerms: (await cachedTokenize(doc.body, tokenizer, tokenCache)).join(' '),
       });
       options.onProgress?.(Math.min(i + chunkIndex + 1, docs.length), docs.length);
     }
@@ -101,4 +103,22 @@ export async function buildSearchIndex(
   }
 
   return new SearchIndex(miniSearch, tokenizer);
+}
+
+function tokenizeAddressField(text: string): string[] {
+  return normalizeSearchText(text).split(' ').filter(Boolean);
+}
+
+async function cachedTokenize(
+  text: string,
+  tokenizer: SearchTokenizer,
+  cache: Map<string, Promise<string[]>>,
+): Promise<string[]> {
+  const normalized = text.trim();
+  const cached = cache.get(normalized);
+  if (cached) return cached;
+
+  const promise = tokenizer(text);
+  cache.set(normalized, promise);
+  return promise;
 }

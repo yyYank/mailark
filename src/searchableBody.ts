@@ -1,4 +1,4 @@
-const MAX_SEARCHABLE_BODY_LENGTH = 4000;
+const MAX_SEARCHABLE_BODY_LENGTH = 2000;
 const LONG_BINARYISH_RUN = /\b[A-Za-z0-9+/=]{80,}\b/g;
 
 export function extractSearchableBody(body: string, htmlBody: string): string {

@@ -10,7 +10,7 @@ describe('extractSearchableBody', () => {
   test('長すぎる本文は上限で切り詰める', () => {
     const longText = 'あ'.repeat(5000);
 
-    expect(extractSearchableBody(longText, '')).toHaveLength(4000);
+    expect(extractSearchableBody(longText, '')).toHaveLength(2000);
   });
 
   test('base64 っぽい長い断片は除外する', () => {

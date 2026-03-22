@@ -26,10 +26,10 @@ const emailRangeCache = new Map<string, ByteRange>();
 const pstDescriptorCache = new Map<string, number>();
 // メタデータリスト
 let emailMetaList: EmailMeta[] = [];
-// 現在開いているファイルパス（detail 再読み込み用）
-let currentMboxPath = '';
-// PSTファイルパス（PST由来添付のオンデマンド取得用）
-let currentPstPath = '';
+// メールIDごとのmboxファイルパス（detail 再読み込み用）
+const emailMboxPathCache = new Map<string, string>();
+// メールIDごとのPSTファイルパス（PST由来添付のオンデマンド取得用）
+const emailPstPathCache = new Map<string, string>();
 
 function createWindow(): void {
   const icon = getAppIconPath(__dirname, app.isPackaged);
@@ -70,11 +70,11 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// Open file dialog
+// Open file dialog（複数ファイル選択対応）
 ipcMain.handle('open-mbox-file', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'Mail files', extensions: ['mbox', 'mbx', 'pst', ''] },
       { name: 'mbox files', extensions: ['mbox', 'mbx'] },
@@ -83,30 +83,43 @@ ipcMain.handle('open-mbox-file', async () => {
     ],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
+  return result.filePaths;
 });
 
-// Read and parse mbox file (PSTの場合は先にmboxへ変換する)
-// 全件はrendererに転送しない。件数だけ返してページ取得はsearch-emailsで行う
-ipcMain.handle('read-mbox', async (_event, filePath: string) => {
+// Read and parse mbox files (PSTの場合は先にmboxへ変換する)
+// 複数ファイルをマージして読み込む。全件はrendererに転送しない。件数だけ返す
+ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
   try {
     emailSearchCache.clear();
     emailRangeCache.clear();
     pstDescriptorCache.clear();
+    emailMboxPathCache.clear();
+    emailPstPathCache.clear();
     emailMetaList = [];
-    currentPstPath = '';
 
-    let mboxPath = filePath;
-    if (filePath.toLowerCase().endsWith('.pst')) {
-      mainWindow?.webContents.send('load-progress', { percent: 0, count: 0, phase: 'converting' });
-      mboxPath = await convertPstToMbox(filePath, (percent, count) => {
-        mainWindow?.webContents.send('load-progress', { percent: Math.floor(percent / 2), count, phase: 'converting' });
-      });
-      currentPstPath = filePath;
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i];
+      let mboxPath = filePath;
+      let pstPath = '';
+
+      if (filePath.toLowerCase().endsWith('.pst')) {
+        mainWindow?.webContents.send('load-progress', {
+          percent: 0, count: emailMetaList.length, phase: 'converting',
+          fileIndex: i + 1, fileCount: filePaths.length,
+        });
+        mboxPath = await convertPstToMbox(filePath, (percent, count) => {
+          mainWindow?.webContents.send('load-progress', {
+            percent: Math.floor(percent / 2), count: emailMetaList.length + count, phase: 'converting',
+            fileIndex: i + 1, fileCount: filePaths.length,
+          });
+        });
+        pstPath = filePath;
+      }
+
+      const newEmails = await parseMboxStream(mboxPath, pstPath);
+      emailMetaList = emailMetaList.concat(newEmails);
     }
 
-    currentMboxPath = mboxPath;
-    emailMetaList = await parseMboxStream(mboxPath);
     return { total: emailMetaList.length };
   } catch (err) {
     return { error: (err as Error).message };
@@ -116,14 +129,15 @@ ipcMain.handle('read-mbox', async (_event, filePath: string) => {
 // メール本文・添付をファイルから再読み込みして返す（キャッシュには持たない）
 ipcMain.handle('get-email-detail', async (_event, id: string) => {
   const range = emailRangeCache.get(id);
-  if (!range || !currentMboxPath) return { body: '', htmlBody: '', attachments: [] };
+  const mboxPath = emailMboxPathCache.get(id);
+  if (!range || !mboxPath) return { body: '', htmlBody: '', attachments: [] };
 
   return new Promise<{ body: string; htmlBody: string; attachments: Attachment[] }>((resolve) => {
     const chunks: Buffer[] = [];
     const opts: { start: number; end?: number } = { start: range.byteStart };
     if (range.byteEnd > range.byteStart) opts.end = range.byteEnd - 1;
 
-    fs.createReadStream(currentMboxPath, opts)
+    fs.createReadStream(mboxPath, opts)
       .on('data', (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
       .on('end', () => {
         try {
@@ -134,9 +148,10 @@ ipcMain.handle('get-email-detail', async (_event, id: string) => {
           // PST由来メールは添付をmboxから読まずPSTから直接取得する
           let attachments: Attachment[] = email.attachments;
           const descId = pstDescriptorCache.get(id);
-          if (currentPstPath && descId != null) {
+          const pstPath = emailPstPathCache.get(id);
+          if (pstPath && descId != null) {
             try {
-              attachments = readPstAttachments(currentPstPath, descId);
+              attachments = readPstAttachments(pstPath, descId);
             } catch {
               // PST読み込み失敗時はmbox由来の添付（空）のまま
             }
@@ -201,7 +216,7 @@ ipcMain.handle('save-attachment', async (_event, { filename, data }: { filename:
 
 // Buffer ベースのストリームパーサー。byte offset を追跡して再読み込みに備える。
 // body/htmlBody/添付は flush 後に捨て、検索用テキスト（最大500文字）だけ保持。
-function parseMboxStream(filePath: string): Promise<EmailMeta[]> {
+function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
   return new Promise((resolve, reject) => {
     const fileSize = fs.statSync(filePath).size;
     let bytesRead = 0;
@@ -227,6 +242,8 @@ function parseMboxStream(filePath: string): Promise<EmailMeta[]> {
         }
         emailSearchCache.set(email.id, searchText.slice(0, 500).toLowerCase());
         emailRangeCache.set(email.id, { byteStart, byteEnd });
+        emailMboxPathCache.set(email.id, filePath);
+        if (pstPath) emailPstPathCache.set(email.id, pstPath);
         if (email.pstDescriptorId != null) {
           pstDescriptorCache.set(email.id, email.pstDescriptorId);
         }

@@ -26,8 +26,8 @@ export type Phase = 'empty' | 'loading' | 'no-selection' | 'detail';
 declare global {
   interface Window {
     api: {
-      openMboxFile: () => Promise<string | null>;
-      readMbox: (filePath: string) => Promise<{ total?: number; error?: string }>;
+      openMboxFile: () => Promise<string[] | null>;
+      readMbox: (filePaths: string[]) => Promise<{ total?: number; error?: string }>;
       getEmailDetail: (id: string) => Promise<EmailDetail>;
       searchEmails: (params: {
         query: string;

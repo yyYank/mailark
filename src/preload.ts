@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
   openMboxFile: () => ipcRenderer.invoke('open-mbox-file'),
-  readMbox: (filePath: string) => ipcRenderer.invoke('read-mbox', filePath),
+  readMbox: (filePaths: string[]) => ipcRenderer.invoke('read-mbox', filePaths),
   getEmailDetail: (id: string) => ipcRenderer.invoke('get-email-detail', id),
   searchEmails: (params: unknown) => ipcRenderer.invoke('search-emails', params),
   saveAttachment: (data: unknown) => ipcRenderer.invoke('save-attachment', data),

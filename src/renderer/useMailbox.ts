@@ -41,10 +41,11 @@ export function useMailbox() {
   }, []);
 
   const openFile = useCallback(async () => {
-    const fp = await window.api.openMboxFile();
-    if (!fp) return;
+    const fps = await window.api.openMboxFile();
+    if (!fps || fps.length === 0) return;
 
-    setFileName(fp.split('/').pop() || fp);
+    const names = fps.map(fp => fp.split('/').pop() || fp);
+    setFileName(names.length === 1 ? names[0] : `${names.length}ファイル`);
     setPhase('loading');
     setLoadProgress({ percent: 0, count: 0 });
 
@@ -53,7 +54,7 @@ export function useMailbox() {
       setLoadProgress({ percent, count });
     });
 
-    const result = await window.api.readMbox(fp);
+    const result = await window.api.readMbox(fps);
     window.api.offLoadProgress();
 
     if (result.error) {

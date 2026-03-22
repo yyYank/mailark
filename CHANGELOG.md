@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.12](https://github.com/yyYank/mailark/compare/v0.0.11...v0.0.12) - 2026-03-22
+- feat: 複数PSTファイルのマージ表示に対応 by @yyYank in https://github.com/yyYank/mailark/pull/37
+
 ## [v0.0.11](https://github.com/yyYank/mailark/compare/v0.0.10...v0.0.11) - 2026-03-20
 - fix: Windows リリース bundle の exe 名を修正 by @yyYank in https://github.com/yyYank/mailark/pull/35
 

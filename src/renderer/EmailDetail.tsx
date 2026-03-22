@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Phase, EmailMeta, EmailDetail as EmailDetailType } from './types';
 import { escHtml, fileIcon } from './utils';
+import { ThemeMode } from './theme';
+import { getEmailFrameStyles } from './emailFrameTheme';
 
 // トップレベル（メール全体の区切り）：全幅
 const HR_STYLE = 'border:none;border-top:1px solid #ccc;margin:8px 0';
@@ -150,6 +152,7 @@ interface Props {
   loadProgress: { percent: number; count: number };
   currentMeta: EmailMeta | null;
   currentDetail: EmailDetailType | null;
+  theme: ThemeMode;
   viewMode: 'html' | 'plain';
   onOpenFile: () => void;
   onViewModeChange: (mode: 'html' | 'plain') => void;
@@ -157,6 +160,7 @@ interface Props {
 
 export default function EmailDetail({
   phase, loadProgress, currentMeta, currentDetail,
+  theme,
   viewMode, onOpenFile, onViewModeChange,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -171,13 +175,15 @@ export default function EmailDetail({
       const meta = `<div style="font-size:12px;color:#555;padding:2px 0">
         <b>${escHtml(currentMeta.from)}</b>　${escHtml(currentMeta.date)}
       </div>`;
+      const frameStyles = getEmailFrameStyles(theme);
       const html = `<html><body style="margin:16px;font-family:sans-serif">
+        <style>${frameStyles}</style>
         ${hr}${meta}${hr}
         ${rawBody}
       </body></html>`;
       iframeRef.current.srcdoc = html;
     }
-  }, [currentDetail, currentMeta, viewMode]);
+  }, [currentDetail, currentMeta, theme, viewMode]);
 
   return (
     <div id="email-detail">

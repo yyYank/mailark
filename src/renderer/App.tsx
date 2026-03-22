@@ -61,6 +61,7 @@ export default function App() {
           loadProgress={loadProgress}
           currentMeta={currentMeta}
           currentDetail={currentDetail}
+          theme={theme}
           viewMode={viewMode}
           onOpenFile={openFile}
           onViewModeChange={setViewMode}

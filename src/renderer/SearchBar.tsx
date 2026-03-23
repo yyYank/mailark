@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { SearchStatus, describeSearchStatus } from '../searchStatus';
+
 interface Props {
   query: string;
   sortOrder: 'asc' | 'desc';
@@ -7,15 +9,20 @@ interface Props {
   disabled: boolean;
   totalMatched: number;
   totalCount: number;
+  searchStatus: SearchStatus;
   onQueryChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onQueryKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onQueryCompositionStart: () => void;
+  onQueryCompositionEnd: () => void;
   onExcludeUnknownChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSortToggle: () => void;
 }
 
 export default function SearchBar({
   query, sortOrder, excludeUnknown, disabled,
-  totalMatched, totalCount,
-  onQueryChange, onExcludeUnknownChange, onSortToggle,
+  totalMatched, totalCount, searchStatus,
+  onQueryChange, onQueryKeyDown, onQueryCompositionStart, onQueryCompositionEnd,
+  onExcludeUnknownChange, onSortToggle,
 }: Props) {
   return (
     <div id="search-bar">
@@ -26,6 +33,9 @@ export default function SearchBar({
         disabled={disabled}
         value={query}
         onChange={onQueryChange}
+        onKeyDown={onQueryKeyDown}
+        onCompositionStart={onQueryCompositionStart}
+        onCompositionEnd={onQueryCompositionEnd}
       />
       <label id="filter-unknown-label">
         <input
@@ -45,6 +55,9 @@ export default function SearchBar({
       </button>
       <span id="mail-count">
         {!disabled ? `${totalMatched} / ${totalCount} 件` : '—'}
+      </span>
+      <span id="search-status">
+        {describeSearchStatus(searchStatus)}
       </span>
     </div>
   );

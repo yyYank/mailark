@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Phase, EmailMeta, EmailDetail } from './types';
+import { shouldSubmitSearch } from '../searchInputBehavior';
+import { SearchStatus } from '../searchStatus';
 
 const PAGE_SIZE = 100;
 
@@ -11,6 +13,7 @@ export function useMailbox() {
   const [displayedEmails, setDisplayedEmails] = useState<EmailMeta[]>([]);
   const [totalMatched, setTotalMatched] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>({ phase: 'idle' });
 
   const [query, setQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -21,7 +24,7 @@ export function useMailbox() {
   const [currentDetail, setCurrentDetail] = useState<EmailDetail | null>(null);
   const [viewMode, setViewMode] = useState<'html' | 'plain'>('html');
 
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isComposingRef = useRef(false);
 
   const loadPage = useCallback(async (offset: number, opts: {
     q: string;
@@ -38,6 +41,20 @@ export function useMailbox() {
     });
     setTotalMatched(result.total);
     setDisplayedEmails(offset === 0 ? result.emails : opts.prev.concat(result.emails));
+  }, []);
+
+  React.useEffect(() => {
+    window.api.onSearchStatus(status => {
+      setSearchStatus(status);
+    });
+
+    void window.api.getSearchStatus().then(status => {
+      setSearchStatus(status);
+    });
+
+    return () => {
+      window.api.offSearchStatus();
+    };
   }, []);
 
   const openFile = useCallback(async () => {
@@ -65,6 +82,7 @@ export function useMailbox() {
 
     setTotalCount(result.total ?? 0);
     setQuery('');
+    setSearchStatus({ phase: 'idle' });
     setSelectedIndex(null);
     setCurrentMeta(null);
     setCurrentDetail(null);
@@ -82,23 +100,36 @@ export function useMailbox() {
   }, [phase, loadPage]);
 
   const handleQueryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const q = e.target.value;
-    setQuery(q);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => runSearch(q, sortOrder, excludeUnknown), 200);
-  }, [sortOrder, excludeUnknown, runSearch]);
+    setQuery(e.target.value);
+  }, []);
+
+  const handleQueryKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    const nativeEvent = e.nativeEvent as KeyboardEvent;
+    const isComposing = isComposingRef.current || nativeEvent.isComposing;
+    if (!shouldSubmitSearch(e.key, isComposing)) return;
+
+    e.preventDefault();
+    void runSearch(query, sortOrder, excludeUnknown);
+  }, [query, sortOrder, excludeUnknown, runSearch]);
+
+  const handleQueryCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
+  const handleQueryCompositionEnd = useCallback(() => {
+    isComposingRef.current = false;
+  }, []);
 
   const handleExcludeUnknownChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const eu = e.target.checked;
     setExcludeUnknown(eu);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    runSearch(query, sortOrder, eu);
+    void runSearch(query, sortOrder, eu);
   }, [query, sortOrder, runSearch]);
 
   const handleSortToggle = useCallback(() => {
     const so = sortOrder === 'desc' ? 'asc' : 'desc';
     setSortOrder(so);
-    runSearch(query, so, excludeUnknown);
+    void runSearch(query, so, excludeUnknown);
   }, [sortOrder, query, excludeUnknown, runSearch]);
 
   const selectEmail = useCallback(async (index: number) => {
@@ -125,6 +156,7 @@ export function useMailbox() {
     displayedEmails,
     totalMatched,
     totalCount,
+    searchStatus,
     query,
     sortOrder,
     excludeUnknown,
@@ -136,6 +168,9 @@ export function useMailbox() {
     // handlers
     openFile,
     handleQueryChange,
+    handleQueryKeyDown,
+    handleQueryCompositionStart,
+    handleQueryCompositionEnd,
     handleExcludeUnknownChange,
     handleSortToggle,
     selectEmail,

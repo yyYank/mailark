@@ -1,3 +1,4 @@
+import { SearchStatus } from '../searchStatus';
 import { EmailMeta } from './types';
 import { formatDate, highlight } from './utils';
 
@@ -6,6 +7,7 @@ interface Props {
   selectedIndex: number | null;
   totalMatched: number;
   query: string;
+  searchStatus: SearchStatus;
   isVisible: boolean;
   hasMore: boolean;
   onSelect: (index: number) => void;
@@ -13,7 +15,7 @@ interface Props {
 }
 
 export default function EmailList({
-  emails, selectedIndex, totalMatched, query,
+  emails, selectedIndex, totalMatched, query, searchStatus,
   isVisible, hasMore, onSelect, onLoadMore,
 }: Props) {
   return (
@@ -24,7 +26,9 @@ export default function EmailList({
         </div>
       )}
       {isVisible && totalMatched === 0 && (
-        <div id="email-list-empty">該当するメールがありません</div>
+        <div id="email-list-empty">
+          {getEmptyMessage(query, searchStatus)}
+        </div>
       )}
       {isVisible && emails.map((em, i) => (
         <div
@@ -55,4 +59,13 @@ export default function EmailList({
       )}
     </div>
   );
+}
+
+function getEmptyMessage(query: string, searchStatus: SearchStatus): string {
+  if (!query.trim()) return '該当するメールがありません';
+  if (searchStatus.phase === 'indexing') return '検索 index を構築中です';
+  if (searchStatus.phase === 'searching') return '自然言語検索を実行中です';
+  if (searchStatus.phase === 'searched') return `自然言語検索のヒットは 0 件です`;
+  if (searchStatus.phase === 'error') return searchStatus.message;
+  return '該当するメールがありません';
 }

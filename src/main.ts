@@ -7,6 +7,10 @@ import { parseSearchQuery } from './queryParser';
 import { convertPstToMbox, readPstAttachments } from './converter/pst';
 import { getAppIconPath } from './iconPath';
 import { applyAppMetadata } from './appMetadata';
+import { createBackgroundSearchIndex } from './backgroundSearchIndex';
+import { SearchDocument } from './searchEngine';
+import { SearchStatus } from './searchStatus';
+import { extractSearchableBody } from './searchableBody';
 
 interface SearchParams {
   query?: string;
@@ -18,8 +22,6 @@ interface SearchParams {
 
 let mainWindow: BrowserWindow | null = null;
 
-// 検索用テキスト（最大500文字・小文字）のみを保持。body/htmlBody/添付は持たない
-const emailSearchCache = new Map<string, string>();
 // メールの byte 範囲。detail 取得時にファイルを再読み込みするために使う
 const emailRangeCache = new Map<string, ByteRange>();
 // PST由来メールのdescriptor ID。添付ファイルをオンデマンドで取得するために使う
@@ -30,6 +32,14 @@ let emailMetaList: EmailMeta[] = [];
 const emailMboxPathCache = new Map<string, string>();
 // メールIDごとのPSTファイルパス（PST由来添付のオンデマンド取得用）
 const emailPstPathCache = new Map<string, string>();
+const emailSearchDocuments: SearchDocument[] = [];
+let latestSearchStatus: SearchStatus = { phase: 'idle' };
+const emailSearchIndex = createBackgroundSearchIndex({
+  onStatusChange: status => {
+    latestSearchStatus = status;
+    mainWindow?.webContents.send('search-status', status);
+  },
+});
 
 function createWindow(): void {
   const icon = getAppIconPath(__dirname, app.isPackaged);
@@ -86,16 +96,20 @@ ipcMain.handle('open-mbox-file', async () => {
   return result.filePaths;
 });
 
+ipcMain.handle('get-search-status', async () => latestSearchStatus);
+
 // Read and parse mbox files (PSTの場合は先にmboxへ変換する)
 // 複数ファイルをマージして読み込む。全件はrendererに転送しない。件数だけ返す
 ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
   try {
-    emailSearchCache.clear();
     emailRangeCache.clear();
     pstDescriptorCache.clear();
     emailMboxPathCache.clear();
     emailPstPathCache.clear();
     emailMetaList = [];
+    emailSearchDocuments.length = 0;
+    emailSearchIndex.reset();
+    latestSearchStatus = { phase: 'idle' };
 
     for (let i = 0; i < filePaths.length; i++) {
       const filePath = filePaths[i];
@@ -119,7 +133,7 @@ ipcMain.handle('read-mbox', async (_event, filePaths: string[]) => {
       const newEmails = await parseMboxStream(mboxPath, pstPath);
       emailMetaList = emailMetaList.concat(newEmails);
     }
-
+    emailSearchIndex.replaceAll(emailSearchDocuments);
     return { total: emailMetaList.length };
   } catch (err) {
     return { error: (err as Error).message };
@@ -169,6 +183,7 @@ ipcMain.handle('get-email-detail', async (_event, id: string) => {
 // ページネーション付き検索
 ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100, sortOrder = 'desc', excludeUnknown = false }: SearchParams) => {
   let results = emailMetaList;
+  let scoredSearchResults = new Map<string, number>();
 
   if (excludeUnknown) {
     results = results.filter(em => !em.from.toLowerCase().includes('unknown@unknown.com'));
@@ -176,25 +191,25 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
 
   if (query) {
     const parsed = parseSearchQuery(query);
+    // ① 構造フィルタ（from/to/since/until）で候補を絞る
     results = results.filter(em => {
       if (parsed.from && !em.from.toLowerCase().includes(parsed.from.toLowerCase())) return false;
       if (parsed.to && !em.to.toLowerCase().includes(parsed.to.toLowerCase())) return false;
       if (parsed.since !== undefined && em.dateObj < parsed.since) return false;
       if (parsed.until !== undefined && em.dateObj > parsed.until) return false;
-      if (parsed.text) {
-        const q = parsed.text.toLowerCase();
-        if (em.from.toLowerCase().includes(q)) return true;
-        if (em.to.toLowerCase().includes(q)) return true;
-        if (em.subject.toLowerCase().includes(q)) return true;
-        const searchText = emailSearchCache.get(em.id) || '';
-        return searchText.includes(q);
-      }
       return true;
     });
+
+    // ② 全文検索インデックスでさらに絞り込み、スコアを取得
+    if (parsed.text) {
+      const searchResults = await emailSearchIndex.search(parsed.text);
+      scoredSearchResults = new Map(searchResults.map(result => [result.id, result.score]));
+      results = results.filter(em => scoredSearchResults.has(em.id));
+    }
   }
 
   const sorted = results.slice().sort((a, b) =>
-    sortOrder === 'asc' ? a.dateObj - b.dateObj : b.dateObj - a.dateObj
+    compareSearchResults(a, b, sortOrder, scoredSearchResults)
   );
 
   return {
@@ -202,6 +217,17 @@ ipcMain.handle('search-emails', async (_event, { query, offset = 0, limit = 100,
     emails: sorted.slice(offset, offset + limit),
   };
 });
+
+function compareSearchResults(
+  a: EmailMeta,
+  b: EmailMeta,
+  sortOrder: 'asc' | 'desc',
+  scoredSearchResults: Map<string, number>,
+): number {
+  const scoreDiff = (scoredSearchResults.get(b.id) || 0) - (scoredSearchResults.get(a.id) || 0);
+  if (scoreDiff !== 0) return scoreDiff;
+  return sortOrder === 'asc' ? a.dateObj - b.dateObj : b.dateObj - a.dateObj;
+}
 
 // Save attachment to temp and open
 ipcMain.handle('save-attachment', async (_event, { filename, data }: { filename: string; data: string }) => {
@@ -215,7 +241,7 @@ ipcMain.handle('save-attachment', async (_event, { filename, data }: { filename:
 // ─── mbox parser ────────────────────────────────────────────────────────────
 
 // Buffer ベースのストリームパーサー。byte offset を追跡して再読み込みに備える。
-// body/htmlBody/添付は flush 後に捨て、検索用テキスト（最大500文字）だけ保持。
+// body/htmlBody/添付は flush 後に捨て、検索 index 用の最小データだけ保持する。
 function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
   return new Promise((resolve, reject) => {
     const fileSize = fs.statSync(filePath).size;
@@ -235,12 +261,13 @@ function parseMboxStream(filePath: string, pstPath = ''): Promise<EmailMeta[]> {
         const email = parseEmail(raw);
         if (!email) return;
 
-        // 検索用テキスト（最大500文字・小文字）だけ保持
-        let searchText = email.body;
-        if (!searchText && email.htmlBody) {
-          searchText = email.htmlBody.replace(/<[^>]*>/g, ' ');
-        }
-        emailSearchCache.set(email.id, searchText.slice(0, 500).toLowerCase());
+        emailSearchDocuments.push({
+          id: email.id,
+          from: email.from,
+          to: email.to,
+          subject: email.subject,
+          body: extractSearchableBody(email.body, email.htmlBody),
+        });
         emailRangeCache.set(email.id, { byteStart, byteEnd });
         emailMboxPathCache.set(email.id, filePath);
         if (pstPath) emailPstPathCache.set(email.id, pstPath);
